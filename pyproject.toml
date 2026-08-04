@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pandas-luarix"
+version = "0.1.0"
+description = "pandas DataFrame accessors (.smc, .indicators, .analysis) for Smart Money Concepts and indicator analysis."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=3.0",
+    "numpy>=2.4",
+    "pandas_ta_classic>=0.5.44",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pandas_luarix*"]

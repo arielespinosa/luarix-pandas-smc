@@ -1,0 +1,6 @@
+pyproject.toml
+pandas_luarix.egg-info/PKG-INFO
+pandas_luarix.egg-info/SOURCES.txt
+pandas_luarix.egg-info/dependency_links.txt
+pandas_luarix.egg-info/requires.txt
+pandas_luarix.egg-info/top_level.txt

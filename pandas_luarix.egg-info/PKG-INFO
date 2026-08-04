@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: pandas-luarix
+Version: 0.1.0
+Summary: pandas DataFrame accessors (.smc, .indicators, .analysis) for Smart Money Concepts and indicator analysis.
+Requires-Python: >=3.11
+Requires-Dist: pandas>=3.0
+Requires-Dist: numpy>=2.4
+Requires-Dist: pandas_ta_classic>=0.5.44
