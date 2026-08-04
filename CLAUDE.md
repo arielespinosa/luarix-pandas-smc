@@ -1,0 +1,2 @@
+- Todos los planes que consideres los pondrás en la carpeta docs/plans
+- Los errores y elementos importantes a tener en cuenta, los pondras en esta carpeta (docs/plans) en un fichero bugs.md para que así no tengas que estar cambiando codigo y poniendo cosas que no sirve sabiendo que ya las habías analizado

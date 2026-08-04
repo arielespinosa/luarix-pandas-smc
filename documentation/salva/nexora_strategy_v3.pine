@@ -1,0 +1,2308 @@
+
+//@version=5
+indicator('Nexora v3', 'Nexora v3', overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+//---------------------------------------------------------------------------------------------------------------------}
+//CONSTANTS & STRINGS & INPUTS
+//---------------------------------------------------------------------------------------------------------------------{
+BULLISH_LEG                     = 1
+BEARISH_LEG                     = 0
+
+BULLISH                         = +1
+BEARISH                         = -1
+
+GREEN                           = #089981
+RED                             = #F23645
+BLUE                            = #2157f3
+GRAY                            = #878b94
+MONO_BULLISH                    = #b2b5be
+MONO_BEARISH                    = #5d606b
+
+HISTORICAL                      = 'Historical'
+PRESENT                         = 'Present'
+
+COLORED                         = 'Colored'
+MONOCHROME                      = 'Monochrome'
+
+ALL                             = 'All'
+BOS                             = 'BOS'
+CHOCH                           = 'CHoCH'
+
+TINY                            = size.tiny
+SMALL                           = size.small
+NORMAL                          = size.normal
+
+ATR                             = 'Atr'
+RANGE                           = 'Cumulative Mean Range'
+
+CLOSE                           = 'Close'
+HIGHLOW                         = 'High/Low'
+
+SOLID                           = '⎯⎯⎯'
+DASHED                          = '----'
+DOTTED                          = '····'
+
+SMART_GROUP                     = 'Smart Money Concepts'
+INTERNAL_GROUP                  = 'Real Time Internal Structure'
+SWING_GROUP                     = 'Real Time Swing Structure'
+BLOCKS_GROUP                    = 'Order Blocks'
+EQUAL_GROUP                     = 'EQH/EQL'
+GAPS_GROUP                      = 'Fair Value Gaps'
+LEVELS_GROUP                    = 'Highs & Lows MTF'
+ZONES_GROUP                     = 'Premium & Discount Zones'
+STOCH_GROUP                     = 'Stochastic Oscillator'
+BB_GROUP                        = 'BB50'
+FRACTAL_GROUP                   = 'Fractal'
+SCORE_GROUP                     = 'Entry Score (visual only)'
+
+modeTooltip                     = 'Allows to display historical Structure or only the recent ones'
+styleTooltip                    = 'Indicator color theme'
+showTrendTooltip                = 'Display additional candles with a color reflecting the current trend detected by structure'
+showInternalsTooltip            = 'Display internal market structure'
+internalFilterConfluenceTooltip = 'Filter non significant internal structure breakouts'
+showStructureTooltip            = 'Display swing market Structure'
+showSwingsTooltip               = 'Display swing point as labels on the chart'
+showHighLowSwingsTooltip        = 'Highlight most recent strong and weak high/low points on the chart'
+showInternalOrderBlocksTooltip  = 'Display internal order blocks on the chart\n\nNumber of internal order blocks to display on the chart'
+showSwingOrderBlocksTooltip     = 'Display swing order blocks on the chart\n\nNumber of internal swing blocks to display on the chart'
+orderBlockFilterTooltip         = 'Method used to filter out volatile order blocks \n\nIt is recommended to use the cumulative mean range method when a low amount of data is available'
+orderBlockMitigationTooltip     = 'Select what values to use for order block mitigation'
+showEqualHighsLowsTooltip       = 'Display equal highs and equal lows on the chart'
+equalHighsLowsLengthTooltip     = 'Number of bars used to confirm equal highs and equal lows'
+equalHighsLowsThresholdTooltip  = 'Sensitivity threshold in a range (0, 1) used for the detection of equal highs & lows\n\nLower values will return fewer but more pertinent results'
+showFairValueGapsTooltip        = 'Display fair values gaps on the chart'
+fairValueGapsThresholdTooltip   = 'Filter out non significant fair value gaps'
+fairValueGapsTimeframeTooltip   = 'Fair value gaps timeframe'
+fairValueGapsExtendTooltip      = 'Determine how many bars to extend the Fair Value Gap boxes on chart'
+showPremiumDiscountZonesTooltip = 'Display premium, discount, and equilibrium zones on chart'
+showStochasticTooltip           = 'Display markers on price when the Stochastic Oscillator enters oversold/overbought (no se grafica el oscilador en su propio panel — Pine no permite que un script overlay mande plots a un panel aparte; el valor de %K/%D queda disponible para la lógica de la estrategia)'
+showBB50Tooltip                 = 'Display Bollinger Bands (50, 2) on price'
+showFractalTooltip               = 'Recuadro de seguridad marcado manualmente (inicio/alto/bajo). Si el precio sale del rango (high > Fractal High o low < Fractal Low), el estado pasa a BROKEN de forma irreversible — esto va a servir para detener la estrategia cuando se implementen las entradas'
+
+modeInput                       = input.string( HISTORICAL, 'Mode',                     group = SMART_GROUP,    tooltip = modeTooltip, options = [HISTORICAL, PRESENT])
+styleInput                      = input.string( COLORED,    'Style',                    group = SMART_GROUP,    tooltip = styleTooltip,options = [COLORED, MONOCHROME])
+showTrendInput                  = input(        false,      'Color Candles',            group = SMART_GROUP,    tooltip = showTrendTooltip)
+
+showInternalsInput              = input(        true,       'Show Internal Structure',  group = INTERNAL_GROUP, tooltip = showInternalsTooltip)
+showInternalBullInput           = input.string( ALL,        'Bullish Structure',        group = INTERNAL_GROUP, inline = 'ibull', options = [ALL,BOS,CHOCH])
+internalBullColorInput          = input(        GREEN,      '',                         group = INTERNAL_GROUP, inline = 'ibull')
+showInternalBearInput           = input.string( ALL,        'Bearish Structure' ,       group = INTERNAL_GROUP, inline = 'ibear', options = [ALL,BOS,CHOCH])
+internalBearColorInput          = input(        RED,        '',                         group = INTERNAL_GROUP, inline = 'ibear')
+internalFilterConfluenceInput   = input(        false,      'Confluence Filter',        group = INTERNAL_GROUP, tooltip = internalFilterConfluenceTooltip)
+internalStructureSize           = input.string( TINY,       'Internal Label Size',      group = INTERNAL_GROUP, options = [TINY,SMALL,NORMAL])
+
+showStructureInput              = input(        true,       'Show Swing Structure',     group = SWING_GROUP,    tooltip = showStructureTooltip)
+showSwingBullInput              = input.string( ALL,        'Bullish Structure',        group = SWING_GROUP,    inline = 'bull',    options = [ALL,BOS,CHOCH])
+swingBullColorInput             = input(        GREEN,      '',                         group = SWING_GROUP,    inline = 'bull')
+showSwingBearInput              = input.string( ALL,        'Bearish Structure',        group = SWING_GROUP,    inline = 'bear',    options = [ALL,BOS,CHOCH])
+swingBearColorInput             = input(        RED,        '',                         group = SWING_GROUP,    inline = 'bear')
+swingStructureSize              = input.string( SMALL,      'Swing Label Size',         group = SWING_GROUP,    options = [TINY,SMALL,NORMAL])
+showSwingsInput                 = input(        false,      'Show Swings Points',       group = SWING_GROUP,    tooltip = showSwingsTooltip,inline = 'swings')
+swingsLengthInput               = input.int(    50,         '',                         group = SWING_GROUP,    minval = 10,                inline = 'swings')
+showHighLowSwingsInput          = input(        true,       'Show Strong/Weak High/Low',group = SWING_GROUP,    tooltip = showHighLowSwingsTooltip)
+
+showInternalOrderBlocksInput    = input(        true,       'Internal Order Blocks' ,   group = BLOCKS_GROUP,   tooltip = showInternalOrderBlocksTooltip,   inline = 'iob')
+internalOrderBlocksSizeInput    = input.int(    20,         '',                         group = BLOCKS_GROUP,   minval = 1, maxval = 20,                    inline = 'iob')
+showSwingOrderBlocksInput       = input(        false,      'Swing Order Blocks',       group = BLOCKS_GROUP,   tooltip = showSwingOrderBlocksTooltip,      inline = 'ob')
+swingOrderBlocksSizeInput       = input.int(    20,         '',                         group = BLOCKS_GROUP,   minval = 1, maxval = 20,                    inline = 'ob')
+orderBlockFilterInput           = input.string( 'Atr',      'Order Block Filter',       group = BLOCKS_GROUP,   tooltip = orderBlockFilterTooltip,          options = [ATR, RANGE])
+orderBlockMitigationInput       = input.string( HIGHLOW,    'Order Block Mitigation',   group = BLOCKS_GROUP,   tooltip = orderBlockMitigationTooltip,      options = [CLOSE,HIGHLOW])
+internalBullishOrderBlockColor  = input.color(color.new(#3179f5, 80), 'Internal Bullish OB',    group = BLOCKS_GROUP)
+internalBearishOrderBlockColor  = input.color(color.new(#f77c80, 80), 'Internal Bearish OB',    group = BLOCKS_GROUP)
+swingBullishOrderBlockColor     = input.color(color.new(#1848cc, 80), 'Bullish OB',             group = BLOCKS_GROUP)
+swingBearishOrderBlockColor     = input.color(color.new(#b22833, 80), 'Bearish OB',             group = BLOCKS_GROUP)
+
+showEqualHighsLowsInput         = input(        true,       'Equal High/Low',           group = EQUAL_GROUP,    tooltip = showEqualHighsLowsTooltip)
+equalHighsLowsLengthInput       = input.int(    3,          'Bars Confirmation',        group = EQUAL_GROUP,    tooltip = equalHighsLowsLengthTooltip,      minval = 1)
+equalHighsLowsThresholdInput    = input.float(  0.1,        'Threshold',                group = EQUAL_GROUP,    tooltip = equalHighsLowsThresholdTooltip,   minval = 0, maxval = 0.5, step = 0.1)
+equalHighsLowsSizeInput         = input.string( TINY,       'Label Size',               group = EQUAL_GROUP,    options = [TINY,SMALL,NORMAL])
+
+showFairValueGapsInput          = input(        false,      'Fair Value Gaps',          group = GAPS_GROUP,     tooltip = showFairValueGapsTooltip)
+fairValueGapsThresholdInput     = input(        true,       'Auto Threshold',           group = GAPS_GROUP,     tooltip = fairValueGapsThresholdTooltip)
+fairValueGapsTimeframeInput     = input.timeframe('',       'Timeframe',                group = GAPS_GROUP,     tooltip = fairValueGapsTimeframeTooltip)
+fairValueGapsBullColorInput     = input.color(color.new(#00ff68, 70), 'Bullish FVG' , group = GAPS_GROUP)
+fairValueGapsBearColorInput     = input.color(color.new(#ff0008, 70), 'Bearish FVG' , group = GAPS_GROUP)
+fairValueGapsExtendInput        = input.int(    1,          'Extend FVG',               group = GAPS_GROUP,     tooltip = fairValueGapsExtendTooltip,       minval = 0)
+
+showDailyLevelsInput            = input(        false,      'Daily',    group = LEVELS_GROUP,   inline = 'daily')
+dailyLevelsStyleInput           = input.string( SOLID,      '',         group = LEVELS_GROUP,   inline = 'daily',   options = [SOLID,DASHED,DOTTED])
+dailyLevelsColorInput           = input(        BLUE,       '',         group = LEVELS_GROUP,   inline = 'daily')
+showWeeklyLevelsInput           = input(        false,      'Weekly',   group = LEVELS_GROUP,   inline = 'weekly')
+weeklyLevelsStyleInput          = input.string( SOLID,      '',         group = LEVELS_GROUP,   inline = 'weekly',  options = [SOLID,DASHED,DOTTED])
+weeklyLevelsColorInput          = input(        BLUE,       '',         group = LEVELS_GROUP,   inline = 'weekly')
+showMonthlyLevelsInput          = input(        false,      'Monthly',   group = LEVELS_GROUP,   inline = 'monthly')
+monthlyLevelsStyleInput         = input.string( SOLID,      '',         group = LEVELS_GROUP,   inline = 'monthly', options = [SOLID,DASHED,DOTTED])
+monthlyLevelsColorInput         = input(        BLUE,       '',         group = LEVELS_GROUP,   inline = 'monthly')
+showAnnualLevelsInput           = input(        true,       'Annual',   group = LEVELS_GROUP,   inline = 'annual')
+annualLevelsStyleInput          = input.string( SOLID,      '',         group = LEVELS_GROUP,   inline = 'annual',  options = [SOLID,DASHED,DOTTED])
+annualLevelsColorInput          = input(        BLUE,       '',         group = LEVELS_GROUP,   inline = 'annual')
+
+showPremiumDiscountZonesInput   = input(        false,      'Premium/Discount Zones',   group = ZONES_GROUP , tooltip = showPremiumDiscountZonesTooltip)
+premiumZoneColorInput           = input.color(  RED,        'Premium Zone',             group = ZONES_GROUP)
+equilibriumZoneColorInput       = input.color(  GRAY,       'Equilibrium Zone',         group = ZONES_GROUP)
+discountZoneColorInput          = input.color(  GREEN,      'Discount Zone',            group = ZONES_GROUP)
+
+showStochasticInput             = input(        true,       'Show Stochastic Signals',  group = STOCH_GROUP,    tooltip = showStochasticTooltip)
+stochasticLengthInput           = input.int(    14,         '%K Length',                group = STOCH_GROUP,    minval = 1)
+stochasticDLengthInput          = input.int(    3,          '%D Length',                group = STOCH_GROUP,    minval = 1)
+stochasticUpperInput            = input.int(    80,         'Overbought Level',         group = STOCH_GROUP,    minval = 50, maxval = 100)
+stochasticLowerInput            = input.int(    20,         'Oversold Level',           group = STOCH_GROUP,    minval = 0,  maxval = 50)
+stochasticBullColorInput        = input.color(  GREEN,      'Oversold Marker',          group = STOCH_GROUP)
+stochasticBearColorInput        = input.color(  RED,        'Overbought Marker',        group = STOCH_GROUP)
+// Ventana fija para la divergencia — aproximación documentada e intencional (ver
+// docs/plans/bugs.md): el equivalente Python compara un buffer que en la práctica
+// queda congelado al iniciar el pipeline, no es un diseño a replicar al pie de la letra.
+stochasticDivLenInput           = input.int(    20,         'Divergence Lookback',      group = STOCH_GROUP,    minval = 10, maxval = 50)
+
+showBB50Input                   = input(        true,       'Show BB50',                group = BB_GROUP,       tooltip = showBB50Tooltip)
+bb50LengthInput                 = input.int(    50,         'Length',                   group = BB_GROUP,       minval = 1)
+bb50MultInput                   = input.float(  2.0,        'StdDev Mult',              group = BB_GROUP,       minval = 0.001, step = 0.1)
+bb50ColorInput                  = input.color(  BLUE,       'Color',                    group = BB_GROUP)
+
+// Default false: High/Low por defecto son un rango absurdo (1.000.000.000 / 0)
+// hasta que el usuario marque su fractal real — con el toggle en true por defecto
+// la caja semitransparente cubre TODO el rango de precio visible y tiñe el fondo
+// completo del chart (mismo motivo por el que en estrategia_nexora_v2.pine el
+// toggle del fractal también queda apagado por defecto).
+showFractalInput                = input(        false,                        'Show Fractal Box', group = FRACTAL_GROUP, tooltip = showFractalTooltip)
+// "Auto" calcula los valores EFECTIVOS (high/low/start) a partir del Annual en vez
+// de usar los inputs manuales de abajo — no se puede poner annualHigh*1.1 como
+// defval de un input (input.float exige "const", un valor calculado en tiempo de
+// ejecución no califica, mismo tipo de limitación que ta.bb()'s mult/input.time()'s
+// defval, ver docs/plans/bugs.md). Con Auto activado, el usuario ve el fractal de
+// inmediato sin tener que configurar nada; lo apaga cuando quiera fijar el suyo.
+fractalAutoInput                = input.bool(   true,                         'Auto (Annual ±10%)', group = FRACTAL_GROUP)
+// input.time() exige defval "const int" (literal) — timestamp(...) es una llamada
+// a función y Pine la califica como "simple int" como máximo, sin importar que sus
+// argumentos sean literales (mismo tipo de limitación que ta.bb()'s mult, ver
+// docs/plans/bugs.md). 1577836800000 = 2020-01-01 00:00:00 UTC en milisegundos.
+fractalStartInput               = input.time(   1577836800000,                'Start (manual)',    group = FRACTAL_GROUP)
+fractalHighInput                = input.float(  1000000000.0,                 'High (manual)',     group = FRACTAL_GROUP)
+fractalLowInput                 = input.float(  0.0,                          'Low (manual)',      group = FRACTAL_GROUP)
+fractalColorInput               = input.color(  GRAY,                         'Color',             group = FRACTAL_GROUP)
+
+// Umbral y color de la señal de entrada — VISUAL ÚNICAMENTE, no manda ninguna orden
+// real (el fichero sigue siendo indicator, no strategy). Pesos del score confirmados
+// contra strategy.py en docs/plans/bugs.md: Equal Lows +35, OB +25, Divergencia +20,
+// Sobreventa +15, BB50 +15, tendencia +10 — máximo 120, umbral por defecto 50.
+showEntrySignalsInput           = input(        true,       'Show Entry Signals', group = SCORE_GROUP, tooltip = 'Mostrar/ocultar las etiquetas de señal de entrada (BUY SIGNAL) — el score sigue calculándose igual aunque estén ocultas')
+scoreThresholdInput             = input.int(    50,         'Score Threshold',  group = SCORE_GROUP, minval = 10, maxval = 120)
+scoreSignalColorInput           = input.color(  GREEN,      'Signal Color',     group = SCORE_GROUP)
+
+//---------------------------------------------------------------------------------------------------------------------}
+//DATA STRUCTURES & VARIABLES
+//---------------------------------------------------------------------------------------------------------------------{
+// @type                            UDT representing alerts as bool fields
+// @field internalBullishBOS        internal structure custom alert
+// @field internalBearishBOS        internal structure custom alert
+// @field internalBullishCHoCH      internal structure custom alert
+// @field internalBearishCHoCH      internal structure custom alert
+// @field swingBullishBOS           swing structure custom alert
+// @field swingBearishBOS           swing structure custom alert
+// @field swingBullishCHoCH         swing structure custom alert
+// @field swingBearishCHoCH         swing structure custom alert
+// @field internalBullishOrderBlock internal order block custom alert
+// @field internalBearishOrderBlock internal order block custom alert
+// @field swingBullishOrderBlock    swing order block custom alert
+// @field swingBearishOrderBlock    swing order block custom alert
+// @field equalHighs                equal high low custom alert
+// @field equalLows                 equal high low custom alert
+// @field bullishFairValueGap       fair value gap custom alert
+// @field bearishFairValueGap       fair value gap custom alert
+type alerts
+    bool internalBullishBOS         = false
+    bool internalBearishBOS         = false
+    bool internalBullishCHoCH       = false
+    bool internalBearishCHoCH       = false
+    bool swingBullishBOS            = false
+    bool swingBearishBOS            = false
+    bool swingBullishCHoCH          = false
+    bool swingBearishCHoCH          = false
+    bool internalBullishOrderBlock  = false
+    bool internalBearishOrderBlock  = false
+    bool swingBullishOrderBlock     = false
+    bool swingBearishOrderBlock     = false
+    bool equalHighs                 = false
+    bool equalLows                  = false
+    bool bullishFairValueGap        = false
+    bool bearishFairValueGap        = false
+
+// @type                            UDT representing last swing extremes (top & bottom)
+// @field top                       last top swing price
+// @field bottom                    last bottom swing price
+// @field barTime                   last swing bar time
+// @field barIndex                  last swing bar index
+// @field lastTopTime               last top swing time
+// @field lastBottomTime            last bottom swing time
+type trailingExtremes
+    float top
+    float bottom
+    int barTime
+    int barIndex
+    int lastTopTime
+    int lastBottomTime
+
+// @type                            UDT representing Fair Value Gaps
+// @field top                       top price
+// @field bottom                    bottom price
+// @field bias                      bias (BULLISH or BEARISH)
+// @field topBox                    top box
+// @field bottomBox                 bottom box
+type fairValueGap
+    float top
+    float bottom
+    int bias
+    box topBox
+    box bottomBox
+
+// @type                            UDT representing trend bias
+// @field bias                      BULLISH or BEARISH
+type trend
+    int bias    
+
+// @type                            UDT representing Equal Highs Lows display
+// @field l_ine                     displayed line
+// @field l_abel                    displayed label
+type equalDisplay
+    line l_ine      = na
+    label l_abel    = na
+
+// @type                            UDT representing a pivot point (swing point) 
+// @field currentLevel              current price level
+// @field lastLevel                 last price level
+// @field crossed                   true if price level is crossed
+// @field barTime                   bar time
+// @field barIndex                  bar index    
+type pivot
+    float currentLevel
+    float lastLevel
+    bool crossed
+    int barTime     = time
+    int barIndex    = bar_index
+
+// @type                            UDT representing an order block
+// @field barHigh                   bar high
+// @field barLow                    bar low
+// @field barTime                   bar time
+// @field bias                      BULLISH or BEARISH
+type orderBlock
+    float barHigh
+    float barLow
+    int barTime    
+    int bias
+
+// @variable                        current swing pivot high    
+var pivot swingHigh                 = pivot.new(na,na,false)
+// @variable                        current swing pivot low
+var pivot swingLow                  = pivot.new(na,na,false)
+// @variable                        current internal pivot high
+var pivot internalHigh              = pivot.new(na,na,false)
+// @variable                        current internal pivot low
+var pivot internalLow               = pivot.new(na,na,false)
+// @variable                        current equal high pivot
+var pivot equalHigh                 = pivot.new(na,na,false)
+// @variable                        current equal low pivot
+var pivot equalLow                  = pivot.new(na,na,false)
+// @variable                        swing trend bias
+var trend swingTrend                = trend.new(0)
+// @variable                        internal trend bias
+var trend internalTrend             = trend.new(0)
+// @variable                        equal high display
+var equalDisplay equalHighDisplay   = equalDisplay.new()
+// @variable                        equal low display
+var equalDisplay equalLowDisplay    = equalDisplay.new()
+// @variable                        storage for fairValueGap UDTs
+var array<fairValueGap> fairValueGaps = array.new<fairValueGap>()
+// @variable                        storage for parsed highs
+var array<float> parsedHighs        = array.new<float>()
+// @variable                        storage for parsed lows
+var array<float> parsedLows         = array.new<float>()
+// @variable                        storage for raw highs
+var array<float> highs              = array.new<float>()
+// @variable                        storage for raw lows
+var array<float> lows               = array.new<float>()
+// @variable                        storage for bar time values
+var array<int> times                = array.new<int>()
+// @variable                        last trailing swing high and low
+var trailingExtremes trailing       = trailingExtremes.new()
+// @variable                                storage for orderBlock UDTs (swing order blocks)
+var array<orderBlock> swingOrderBlocks      = array.new<orderBlock>()
+// @variable                                storage for orderBlock UDTs (internal order blocks)
+var array<orderBlock> internalOrderBlocks   = array.new<orderBlock>()
+// @variable                                storage for swing order blocks boxes
+var array<box> swingOrderBlocksBoxes        = array.new<box>()
+// @variable                                storage for internal order blocks boxes
+var array<box> internalOrderBlocksBoxes     = array.new<box>()
+// @variable    objetos de dibujo para la visualización restaurada desde dailyEngine()
+// (EQL/EQH, estructura BOS-CHoCH interna/swing, puntos swing HH/HL/LH/LL) — ver
+// docs/plans/bugs.md. Creados una vez en barstate.isfirst, repositionados cada barra.
+var array<line>  eqlLinesD             = array.new<line>()
+var array<label> eqlLabelsD            = array.new<label>()
+var array<line>  eqhLinesD             = array.new<line>()
+var array<label> eqhLabelsD            = array.new<label>()
+var array<line>  internalStructLinesD  = array.new<line>()
+var array<label> internalStructLabelsD = array.new<label>()
+var array<line>  swingStructLinesD     = array.new<line>()
+var array<label> swingStructLabelsD    = array.new<label>()
+var array<label> swingPointLabelsD     = array.new<label>()
+// @variable                        color for swing bullish structures
+var swingBullishColor               = styleInput == MONOCHROME ? MONO_BULLISH : swingBullColorInput
+// @variable                        color for swing bearish structures
+var swingBearishColor               = styleInput == MONOCHROME ? MONO_BEARISH : swingBearColorInput
+// @variable                        color for bullish fair value gaps
+var fairValueGapBullishColor        = styleInput == MONOCHROME ? color.new(MONO_BULLISH,70) : fairValueGapsBullColorInput
+// @variable                        color for bearish fair value gaps
+var fairValueGapBearishColor        = styleInput == MONOCHROME ? color.new(MONO_BEARISH,70) : fairValueGapsBearColorInput
+// @variable                        color for premium zone
+var premiumZoneColor                = styleInput == MONOCHROME ? MONO_BEARISH : premiumZoneColorInput
+// @variable                        color for discount zone
+var discountZoneColor               = styleInput == MONOCHROME ? MONO_BULLISH : discountZoneColorInput 
+// @variable                        bar index on current script iteration
+varip int currentBarIndex           = bar_index
+// @variable                        bar index on last script iteration
+varip int lastBarIndex              = bar_index
+// @variable                        alerts in current bar
+alerts currentAlerts                = alerts.new()
+// @variable                        time at start of chart
+var initialTime                     = time
+
+// we create the needed boxes for displaying order blocks at the first execution
+// (internalOrderBlocksBoxes/swingOrderBlocksBoxes ahora se reposicionan con los datos
+// CRUDOS del motor diario — iob1..5/sob1..5 — en vez de los arrays nativos orderBlock,
+// que quedan sin usar a propósito desde que se desactivó el motor nativo, ver
+// docs/plans/bugs.md)
+if barstate.isfirst
+    if showSwingOrderBlocksInput
+        for index = 1 to swingOrderBlocksSizeInput
+            swingOrderBlocksBoxes.push(box.new(na,na,na,na,xloc = xloc.bar_time,extend = extend.right))
+    if showInternalOrderBlocksInput
+        for index = 1 to internalOrderBlocksSizeInput
+            internalOrderBlocksBoxes.push(box.new(na,na,na,na,xloc = xloc.bar_time,extend = extend.right))
+
+    // EQL/EQH (cupo 20), estructura interna/swing BOS-CHoCH (cupo 10), puntos swing
+    // HH/HL/LH/LL (cupo 10) — alimentados por dailyEngine(), ver Parte 1/2 de
+    // docs/plans/bugs.md. Cupos subidos de 5/3 (ver "RESUELTO: cupo de visualización
+    // subido..." en bugs.md) para acercar la comparación visual contra el SMC nativo,
+    // que en modo Historical muestra todo el histórico sin mitigar EQL/estructura.
+    // Mismo patrón: objetos creados una sola vez, repositionados cada barra (o dejados
+    // en su última posición si el slot diario es na).
+    // Sin extend.right: el nativo dibuja un segmento FIJO entre el pivot de origen y el
+    // de confirmación, no una línea que se extiende indefinidamente — ver drawLevelSetD.
+    if showEqualHighsLowsInput
+        for index = 1 to 20
+            eqlLinesD.push(line.new(na,na,na,na,xloc = xloc.bar_time,style = line.style_dotted))
+            eqlLabelsD.push(label.new(na,na,xloc = xloc.bar_time,color = color(na),style = label.style_label_up))
+            eqhLinesD.push(line.new(na,na,na,na,xloc = xloc.bar_time,style = line.style_dotted))
+            eqhLabelsD.push(label.new(na,na,xloc = xloc.bar_time,color = color(na),style = label.style_label_down))
+
+    if showInternalsInput
+        for index = 1 to 10
+            internalStructLinesD.push(line.new(na,na,na,na,xloc = xloc.bar_time,style = line.style_dashed))
+            internalStructLabelsD.push(label.new(na,na,xloc = xloc.bar_time,color = color(na)))
+
+    if showStructureInput
+        for index = 1 to 10
+            swingStructLinesD.push(line.new(na,na,na,na,xloc = xloc.bar_time,style = line.style_solid))
+            swingStructLabelsD.push(label.new(na,na,xloc = xloc.bar_time,color = color(na)))
+
+    if showSwingsInput
+        for index = 1 to 10
+            swingPointLabelsD.push(label.new(na,na,xloc = xloc.bar_time,color = color(na),size = size.small))
+
+// @variable                        source to use in bearish order blocks mitigation
+bearishOrderBlockMitigationSource   = orderBlockMitigationInput == CLOSE ? close : high
+// @variable                        source to use in bullish order blocks mitigation
+bullishOrderBlockMitigationSource   = orderBlockMitigationInput == CLOSE ? close : low
+// @variable                        default volatility measure
+atrMeasure                          = ta.atr(200)
+// @variable                        parsed volatility measure by user settings
+volatilityMeasure                   = orderBlockFilterInput == ATR ? atrMeasure : ta.cum(ta.tr)/bar_index
+// @variable                        true if current bar is a high volatility bar
+highVolatilityBar                   = (high - low) >= (2 * volatilityMeasure)
+// @variable                        parsed high
+parsedHigh                          = highVolatilityBar ? low : high
+// @variable                        parsed low
+parsedLow                           = highVolatilityBar ? high : low
+
+// we store current values into the arrays at each bar
+parsedHighs.push(parsedHigh)
+parsedLows.push(parsedLow)
+highs.push(high)
+lows.push(low)
+times.push(time)
+
+// @variable                        running high/low of the CURRENT calendar year
+// request.security con timeframe "12M" no es fiable (la barra anual sintética no
+// siempre avanza con el tiempo real y queda fija en un año viejo) — por eso el
+// nivel Anual se calcula a mano, acumulando bar a bar en el timeframe del chart,
+// en vez de reusar drawLevels()/request.security como sí hacen Daily/Weekly/Monthly.
+var float annualHigh = na
+var float annualLow  = na
+var int   annualYear = na
+
+curYear = year(time)
+if na(annualYear) or curYear != annualYear
+    annualHigh := high
+    annualLow  := low
+    annualYear := curYear
+else
+    annualHigh := math.max(annualHigh, high)
+    annualLow  := math.min(annualLow, low)
+
+// @variable                        valores EFECTIVOS del Fractal — Auto (10% sobre/bajo
+// el Annual, inicio = 1/1 del año en curso, reusando annualHigh/annualLow/annualYear
+// que ya se calculan arriba) o manuales, según fractalAutoInput. na-guard: annualHigh/
+// annualLow son na hasta la primera barra procesada.
+fractalEffHigh  = fractalAutoInput and not na(annualHigh) ? annualHigh * 1.10 : fractalHighInput
+fractalEffLow   = fractalAutoInput and not na(annualLow)  ? annualLow  * 0.90 : fractalLowInput
+fractalEffStart = fractalAutoInput and not na(annualYear) ? timestamp(annualYear, 1, 1, 0, 0) : fractalStartInput
+
+// @variable                        estado del Fractal — WAITING (antes del inicio),
+// ACTIVE (precio dentro del rango) o BROKEN (precio salió del rango, irreversible).
+// Esto va a servir para que la futura lógica de entradas sepa "en qué momento de
+// la estrategia" está — gatear nuevas entradas con fractalStatus == 'ACTIVE'.
+var string fractalStatus = 'WAITING'
+var bool   fractalBroken = false
+
+if time >= fractalEffStart
+    if fractalStatus == 'WAITING'
+        fractalStatus := 'ACTIVE'
+    if not fractalBroken and (high > fractalEffHigh or low < fractalEffLow)
+        fractalBroken := true
+        fractalStatus := 'BROKEN'
+
+//---------------------------------------------------------------------------------------------------------------------}
+//USER-DEFINED FUNCTIONS
+//---------------------------------------------------------------------------------------------------------------------{
+// @function            Get the value of the current leg, it can be 0 (bearish) or 1 (bullish)
+// @returns             int
+leg(int size) =>
+    var leg     = 0    
+    newLegHigh  = high[size] > ta.highest( size)
+    newLegLow   = low[size]  < ta.lowest(  size)
+    
+    if newLegHigh
+        leg := BEARISH_LEG
+    else if newLegLow
+        leg := BULLISH_LEG
+    leg
+
+// @function            Identify whether the current value is the start of a new leg (swing)
+// @param leg           (int) Current leg value
+// @returns             bool
+startOfNewLeg(int leg)      => ta.change(leg) != 0
+
+// @function            Identify whether the current level is the start of a new bearish leg (swing)
+// @param leg           (int) Current leg value
+// @returns             bool
+startOfBearishLeg(int leg)  => ta.change(leg) == -1
+
+// @function            Identify whether the current level is the start of a new bullish leg (swing)
+// @param leg           (int) Current leg value
+// @returns             bool
+startOfBullishLeg(int leg)  => ta.change(leg) == +1
+
+// @function            create a new label
+// @param labelTime     bar time coordinate
+// @param labelPrice    price coordinate
+// @param tag           text to display
+// @param labelColor    text color
+// @param labelStyle    label style
+// @returns             label ID
+drawLabel(int labelTime, float labelPrice, string tag, color labelColor, string labelStyle) =>    
+    var label l_abel = na
+
+    if modeInput == PRESENT
+        l_abel.delete()
+
+    l_abel := label.new(chart.point.new(labelTime,na,labelPrice),tag,xloc.bar_time,color=color(na),textcolor=labelColor,style = labelStyle,size = size.small)
+
+// @function            create a new line and label representing an EQH or EQL
+// @param p_ivot        starting pivot
+// @param level         price level of current pivot
+// @param size          how many bars ago was the current pivot detected
+// @param equalHigh     true for EQH, false for EQL
+// @returns             label ID
+drawEqualHighLow(pivot p_ivot, float level, int size, bool equalHigh) =>
+    equalDisplay e_qualDisplay = equalHigh ? equalHighDisplay : equalLowDisplay
+    
+    string tag          = 'EQL'
+    color equalColor    = swingBullishColor
+    string labelStyle   = label.style_label_up
+
+    if equalHigh
+        tag         := 'EQH'
+        equalColor  := swingBearishColor
+        labelStyle  := label.style_label_down
+
+    if modeInput == PRESENT
+        line.delete(    e_qualDisplay.l_ine)
+        label.delete(   e_qualDisplay.l_abel)
+        
+    e_qualDisplay.l_ine     := line.new(chart.point.new(p_ivot.barTime,na,p_ivot.currentLevel), chart.point.new(time[size],na,level), xloc = xloc.bar_time, color = equalColor, style = line.style_dotted)
+    labelPosition           = math.round(0.5*(p_ivot.barIndex + bar_index - size))
+    e_qualDisplay.l_abel    := label.new(chart.point.new(na,labelPosition,level), tag, xloc.bar_index, color = color(na), textcolor = equalColor, style = labelStyle, size = equalHighsLowsSizeInput)
+
+// @function            store current structure and trailing swing points, and also display swing points and equal highs/lows
+// @param size          (int) structure size
+// @param equalHighLow  (bool) true for displaying current highs/lows
+// @param internal      (bool) true for getting internal structures
+// @returns             label ID
+getCurrentStructure(int size,bool equalHighLow = false, bool internal = false) =>        
+    currentLeg              = leg(size)
+    newPivot                = startOfNewLeg(currentLeg)
+    pivotLow                = startOfBullishLeg(currentLeg)
+    pivotHigh               = startOfBearishLeg(currentLeg)
+
+    if newPivot
+        if pivotLow
+            pivot p_ivot    = equalHighLow ? equalLow : internal ? internalLow : swingLow    
+
+            if equalHighLow and math.abs(p_ivot.currentLevel - low[size]) < equalHighsLowsThresholdInput * atrMeasure                
+                drawEqualHighLow(p_ivot, low[size], size, false)
+                currentAlerts.equalLows := true
+
+            p_ivot.lastLevel    := p_ivot.currentLevel
+            p_ivot.currentLevel := low[size]
+            p_ivot.crossed      := false
+            p_ivot.barTime      := time[size]
+            p_ivot.barIndex     := bar_index[size]
+
+            if not equalHighLow and not internal
+                trailing.bottom         := p_ivot.currentLevel
+                trailing.barTime        := p_ivot.barTime
+                trailing.barIndex       := p_ivot.barIndex
+                trailing.lastBottomTime := p_ivot.barTime
+
+            if showSwingsInput and not internal and not equalHighLow
+                drawLabel(time[size], p_ivot.currentLevel, p_ivot.currentLevel < p_ivot.lastLevel ? 'LL' : 'HL', swingBullishColor, label.style_label_up)            
+        else
+            pivot p_ivot = equalHighLow ? equalHigh : internal ? internalHigh : swingHigh
+
+            if equalHighLow and math.abs(p_ivot.currentLevel - high[size]) < equalHighsLowsThresholdInput * atrMeasure
+                drawEqualHighLow(p_ivot,high[size],size,true)
+                currentAlerts.equalHighs := true               
+
+            p_ivot.lastLevel    := p_ivot.currentLevel
+            p_ivot.currentLevel := high[size]
+            p_ivot.crossed      := false
+            p_ivot.barTime      := time[size]
+            p_ivot.barIndex     := bar_index[size]
+
+            if not equalHighLow and not internal
+                trailing.top            := p_ivot.currentLevel
+                trailing.barTime        := p_ivot.barTime
+                trailing.barIndex       := p_ivot.barIndex
+                trailing.lastTopTime    := p_ivot.barTime
+
+            if showSwingsInput and not internal and not equalHighLow
+                drawLabel(time[size], p_ivot.currentLevel, p_ivot.currentLevel > p_ivot.lastLevel ? 'HH' : 'LH', swingBearishColor, label.style_label_down)
+                
+// @function                draw line and label representing a structure
+// @param p_ivot            base pivot point
+// @param tag               test to display
+// @param structureColor    base color
+// @param lineStyle         line style
+// @param labelStyle        label style
+// @param labelSize         text size
+// @returns                 label ID
+drawStructure(pivot p_ivot, string tag, color structureColor, string lineStyle, string labelStyle, string labelSize) =>    
+    var line l_ine      = line.new(na,na,na,na,xloc = xloc.bar_time)
+    var label l_abel    = label.new(na,na)
+
+    if modeInput == PRESENT
+        l_ine.delete()
+        l_abel.delete()
+
+    l_ine   := line.new(chart.point.new(p_ivot.barTime,na,p_ivot.currentLevel), chart.point.new(time,na,p_ivot.currentLevel), xloc.bar_time, color=structureColor, style=lineStyle)
+    l_abel  := label.new(chart.point.new(na,math.round(0.5*(p_ivot.barIndex+bar_index)),p_ivot.currentLevel), tag, xloc.bar_index, color=color(na), textcolor=structureColor, style=labelStyle, size = labelSize)
+
+// @function            delete order blocks
+// @param internal      true for internal order blocks
+// @returns             orderBlock ID
+deleteOrderBlocks(bool internal = false) =>
+    array<orderBlock> orderBlocks = internal ? internalOrderBlocks : swingOrderBlocks
+
+    for [index,eachOrderBlock] in orderBlocks
+        bool crossedOderBlock = false
+        
+        if bearishOrderBlockMitigationSource > eachOrderBlock.barHigh and eachOrderBlock.bias == BEARISH
+            crossedOderBlock := true
+            if internal
+                currentAlerts.internalBearishOrderBlock := true
+            else
+                currentAlerts.swingBearishOrderBlock    := true
+        else if bullishOrderBlockMitigationSource < eachOrderBlock.barLow and eachOrderBlock.bias == BULLISH
+            crossedOderBlock := true
+            if internal
+                currentAlerts.internalBullishOrderBlock := true
+            else
+                currentAlerts.swingBullishOrderBlock    := true
+        if crossedOderBlock                    
+            orderBlocks.remove(index)            
+
+// @function            fetch and store order blocks
+// @param p_ivot        base pivot point
+// @param internal      true for internal order blocks
+// @param bias          BULLISH or BEARISH
+// @returns             void
+storeOrdeBlock(pivot p_ivot,bool internal = false,int bias) =>
+    if (not internal and showSwingOrderBlocksInput) or (internal and showInternalOrderBlocksInput)
+
+        array<float> a_rray = na
+        int parsedIndex = na
+
+        if bias == BEARISH
+            a_rray      := parsedHighs.slice(p_ivot.barIndex,bar_index)
+            parsedIndex := p_ivot.barIndex + a_rray.indexof(a_rray.max())  
+        else
+            a_rray      := parsedLows.slice(p_ivot.barIndex,bar_index)
+            parsedIndex := p_ivot.barIndex + a_rray.indexof(a_rray.min())                        
+
+        orderBlock o_rderBlock          = orderBlock.new(parsedHighs.get(parsedIndex), parsedLows.get(parsedIndex), times.get(parsedIndex),bias)
+        array<orderBlock> orderBlocks   = internal ? internalOrderBlocks : swingOrderBlocks
+        
+        if orderBlocks.size() >= 100
+            orderBlocks.pop()
+        orderBlocks.unshift(o_rderBlock)
+
+// @function            draw order blocks as boxes
+// @param internal      true for internal order blocks
+// @returns             void
+drawOrderBlocks(bool internal = false) =>        
+    array<orderBlock> orderBlocks = internal ? internalOrderBlocks : swingOrderBlocks
+    orderBlocksSize = orderBlocks.size()
+
+    if orderBlocksSize > 0        
+        maxOrderBlocks                      = internal ? internalOrderBlocksSizeInput : swingOrderBlocksSizeInput
+        array<orderBlock> parsedOrdeBlocks  = orderBlocks.slice(0, math.min(maxOrderBlocks,orderBlocksSize))
+        array<box> b_oxes                   = internal ? internalOrderBlocksBoxes : swingOrderBlocksBoxes        
+
+        for [index,eachOrderBlock] in parsedOrdeBlocks
+            orderBlockColor = styleInput == MONOCHROME ? (eachOrderBlock.bias == BEARISH ? color.new(MONO_BEARISH,80) : color.new(MONO_BULLISH,80)) : internal ? (eachOrderBlock.bias == BEARISH ? internalBearishOrderBlockColor : internalBullishOrderBlockColor) : (eachOrderBlock.bias == BEARISH ? swingBearishOrderBlockColor : swingBullishOrderBlockColor)
+
+            box b_ox        = b_oxes.get(index)
+            b_ox.set_top_left_point(    chart.point.new(eachOrderBlock.barTime,na,eachOrderBlock.barHigh))
+            b_ox.set_bottom_right_point(chart.point.new(last_bar_time,na,eachOrderBlock.barLow))        
+            b_ox.set_border_color(      internal ? na : orderBlockColor)
+            b_ox.set_bgcolor(           orderBlockColor)
+
+// @function            detect and draw structures, also detect and store order blocks
+// @param internal      true for internal structures or order blocks
+// @returns             void
+displayStructure(bool internal = false) =>
+    var bullishBar = true
+    var bearishBar = true
+
+    if internalFilterConfluenceInput
+        bullishBar := high - math.max(close, open) > math.min(close, open - low)
+        bearishBar := high - math.max(close, open) < math.min(close, open - low)
+    
+    pivot p_ivot    = internal ? internalHigh : swingHigh
+    trend t_rend    = internal ? internalTrend : swingTrend
+
+    lineStyle       = internal ? line.style_dashed : line.style_solid
+    labelSize       = internal ? internalStructureSize : swingStructureSize
+
+    extraCondition  = internal ? internalHigh.currentLevel != swingHigh.currentLevel and bullishBar : true
+    bullishColor    = styleInput == MONOCHROME ? MONO_BULLISH : internal ? internalBullColorInput : swingBullColorInput
+
+    if ta.crossover(close,p_ivot.currentLevel) and not p_ivot.crossed and extraCondition
+        string tag = t_rend.bias == BEARISH ? CHOCH : BOS
+
+        if internal
+            currentAlerts.internalBullishCHoCH  := tag == CHOCH
+            currentAlerts.internalBullishBOS    := tag == BOS
+        else
+            currentAlerts.swingBullishCHoCH     := tag == CHOCH
+            currentAlerts.swingBullishBOS       := tag == BOS
+
+        p_ivot.crossed  := true
+        t_rend.bias     := BULLISH
+
+        displayCondition = internal ? showInternalsInput and (showInternalBullInput == ALL or (showInternalBullInput == BOS and tag != CHOCH) or (showInternalBullInput == CHOCH and tag == CHOCH)) : showStructureInput and (showSwingBullInput == ALL or (showSwingBullInput == BOS and tag != CHOCH) or (showSwingBullInput == CHOCH and tag == CHOCH))
+
+        if displayCondition                        
+            drawStructure(p_ivot,tag,bullishColor,lineStyle,label.style_label_down,labelSize)
+
+        if (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
+            storeOrdeBlock(p_ivot,internal,BULLISH)
+
+    p_ivot          := internal ? internalLow : swingLow    
+    extraCondition  := internal ? internalLow.currentLevel != swingLow.currentLevel and bearishBar : true
+    bearishColor    = styleInput == MONOCHROME ? MONO_BEARISH : internal ? internalBearColorInput : swingBearColorInput
+
+    if ta.crossunder(close,p_ivot.currentLevel) and not p_ivot.crossed and extraCondition
+        string tag = t_rend.bias == BULLISH ? CHOCH : BOS
+
+        if internal
+            currentAlerts.internalBearishCHoCH  := tag == CHOCH
+            currentAlerts.internalBearishBOS    := tag == BOS
+        else
+            currentAlerts.swingBearishCHoCH     := tag == CHOCH
+            currentAlerts.swingBearishBOS       := tag == BOS
+
+        p_ivot.crossed := true
+        t_rend.bias := BEARISH
+
+        displayCondition = internal ? showInternalsInput and (showInternalBearInput == ALL or (showInternalBearInput == BOS and tag != CHOCH) or (showInternalBearInput == CHOCH and tag == CHOCH)) : showStructureInput and (showSwingBearInput == ALL or (showSwingBearInput == BOS and tag != CHOCH) or (showSwingBearInput == CHOCH and tag == CHOCH))
+        
+        if displayCondition                        
+            drawStructure(p_ivot,tag,bearishColor,lineStyle,label.style_label_up,labelSize)
+
+        if (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
+            storeOrdeBlock(p_ivot,internal,BEARISH)
+
+// @function            draw one fair value gap box (each fair value gap has two boxes)
+// @param leftTime      left time coordinate
+// @param rightTime     right time coordinate
+// @param topPrice      top price level
+// @param bottomPrice   bottom price level
+// @param boxColor      box color
+// @returns             box ID
+fairValueGapBox(leftTime,rightTime,topPrice,bottomPrice,boxColor) => box.new(chart.point.new(leftTime,na,topPrice),chart.point.new(rightTime + fairValueGapsExtendInput * (time-time[1]),na,bottomPrice), xloc=xloc.bar_time, border_color = boxColor, bgcolor = boxColor)
+
+// @function            delete fair value gaps
+// @returns             fairValueGap ID
+deleteFairValueGaps() =>
+    for [index,eachFairValueGap] in fairValueGaps
+        if (low < eachFairValueGap.bottom and eachFairValueGap.bias == BULLISH) or (high > eachFairValueGap.top and eachFairValueGap.bias == BEARISH)
+            eachFairValueGap.topBox.delete()
+            eachFairValueGap.bottomBox.delete()
+            fairValueGaps.remove(index)
+    
+// @function            draw fair value gaps
+// @returns             fairValueGap ID
+drawFairValueGaps() => 
+    [lastClose, lastOpen, lastTime, currentHigh, currentLow, currentTime, last2High, last2Low] = request.security(syminfo.tickerid, fairValueGapsTimeframeInput, [close[1], open[1], time[1], high[0], low[0], time[0], high[2], low[2]],lookahead = barmerge.lookahead_on)
+
+    barDeltaPercent     = (lastClose - lastOpen) / (lastOpen * 100)
+    newTimeframe        = timeframe.change(fairValueGapsTimeframeInput)
+    threshold           = fairValueGapsThresholdInput ? ta.cum(math.abs(newTimeframe ? barDeltaPercent : 0)) / bar_index * 2 : 0
+
+    bullishFairValueGap = currentLow > last2High and lastClose > last2High and barDeltaPercent > threshold and newTimeframe
+    bearishFairValueGap = currentHigh < last2Low and lastClose < last2Low and -barDeltaPercent > threshold and newTimeframe
+
+    if bullishFairValueGap
+        currentAlerts.bullishFairValueGap := true
+        fairValueGaps.unshift(fairValueGap.new(currentLow,last2High,BULLISH,fairValueGapBox(lastTime,currentTime,currentLow,math.avg(currentLow,last2High),fairValueGapBullishColor),fairValueGapBox(lastTime,currentTime,math.avg(currentLow,last2High),last2High,fairValueGapBullishColor)))
+    if bearishFairValueGap
+        currentAlerts.bearishFairValueGap := true
+        fairValueGaps.unshift(fairValueGap.new(currentHigh,last2Low,BEARISH,fairValueGapBox(lastTime,currentTime,currentHigh,math.avg(currentHigh,last2Low),fairValueGapBearishColor),fairValueGapBox(lastTime,currentTime,math.avg(currentHigh,last2Low),last2Low,fairValueGapBearishColor)))
+
+// @function            get line style from string
+// @param style         line style
+// @returns             string
+getStyle(string style) =>
+    switch style
+        SOLID => line.style_solid
+        DASHED => line.style_dashed
+        DOTTED => line.style_dotted
+
+// @function            draw MultiTimeFrame levels
+// @param timeframe     base timeframe
+// @param sameTimeframe true if chart timeframe is same as base timeframe
+// @param style         line style
+// @param levelColor    line and text color
+// @returns             void
+drawLevels(string timeframe, bool sameTimeframe, string style, color levelColor) =>
+    [topLevel, bottomLevel, leftTime, rightTime] = request.security(syminfo.tickerid, timeframe, [high[1], low[1], time[1], time],lookahead = barmerge.lookahead_on)
+
+    float parsedTop         = sameTimeframe ? high : topLevel
+    float parsedBottom      = sameTimeframe ? low : bottomLevel    
+
+    int parsedLeftTime      = sameTimeframe ? time : leftTime
+    int parsedRightTime     = sameTimeframe ? time : rightTime
+
+    int parsedTopTime       = time
+    int parsedBottomTime    = time
+
+    if not sameTimeframe
+        int leftIndex               = times.binary_search_rightmost(parsedLeftTime)
+        int rightIndex              = times.binary_search_rightmost(parsedRightTime)
+
+        array<int> timeArray        = times.slice(leftIndex,rightIndex)
+        array<float> topArray       = highs.slice(leftIndex,rightIndex)
+        array<float> bottomArray    = lows.slice(leftIndex,rightIndex)
+
+        parsedTopTime               := timeArray.size() > 0 ? timeArray.get(topArray.indexof(topArray.max())) : initialTime
+        parsedBottomTime            := timeArray.size() > 0 ? timeArray.get(bottomArray.indexof(bottomArray.min())) : initialTime
+
+    var line topLine        = line.new(na, na, na, na, xloc = xloc.bar_time, color = levelColor, style = getStyle(style))
+    var line bottomLine     = line.new(na, na, na, na, xloc = xloc.bar_time, color = levelColor, style = getStyle(style))
+    var label topLabel      = label.new(na, na, xloc = xloc.bar_time, text = str.format('P{0}H',timeframe), color=color(na), textcolor = levelColor, size = size.small, style = label.style_label_left)
+    var label bottomLabel   = label.new(na, na, xloc = xloc.bar_time, text = str.format('P{0}L',timeframe), color=color(na), textcolor = levelColor, size = size.small, style = label.style_label_left)
+
+    topLine.set_first_point(    chart.point.new(parsedTopTime,na,parsedTop))
+    topLine.set_second_point(   chart.point.new(last_bar_time + 20 * (time-time[1]),na,parsedTop))   
+    topLabel.set_point(         chart.point.new(last_bar_time + 20 * (time-time[1]),na,parsedTop))
+
+    bottomLine.set_first_point( chart.point.new(parsedBottomTime,na,parsedBottom))
+    bottomLine.set_second_point(chart.point.new(last_bar_time + 20 * (time-time[1]),na,parsedBottom))
+    bottomLabel.set_point(      chart.point.new(last_bar_time + 20 * (time-time[1]),na,parsedBottom))
+
+// @function            draw the Annual High/Low level — anclado al año calendario
+//                       EN CURSO (annualHigh/annualLow/annualYear, acumulados bar a
+//                       bar más arriba), no a un "12M" de request.security.
+// @param levelColor    line and text color
+// @param style         line style
+// @returns             void
+drawAnnualLevel(color levelColor, string style) =>
+    var line topLine        = line.new(na, na, na, na, xloc = xloc.bar_time, color = levelColor, style = getStyle(style))
+    var line bottomLine     = line.new(na, na, na, na, xloc = xloc.bar_time, color = levelColor, style = getStyle(style))
+    var label topLabel      = label.new(na, na, xloc = xloc.bar_time, text = 'Annual High', color=color(na), textcolor = levelColor, size = size.small, style = label.style_label_left)
+    var label bottomLabel   = label.new(na, na, xloc = xloc.bar_time, text = 'Annual Low',  color=color(na), textcolor = levelColor, size = size.small, style = label.style_label_left)
+
+    yearStartTime = timestamp(annualYear, 1, 1, 0, 0)
+    rightTimeBar  = last_bar_time + 20 * (time - time[1])
+
+    topLine.set_first_point(    chart.point.new(yearStartTime,na,annualHigh))
+    topLine.set_second_point(   chart.point.new(rightTimeBar,na,annualHigh))
+    topLabel.set_point(         chart.point.new(rightTimeBar,na,annualHigh))
+
+    bottomLine.set_first_point( chart.point.new(yearStartTime,na,annualLow))
+    bottomLine.set_second_point(chart.point.new(rightTimeBar,na,annualLow))
+    bottomLabel.set_point(      chart.point.new(rightTimeBar,na,annualLow))
+
+// @function            true if chart timeframe is higher than provided timeframe
+// @param timeframe     timeframe to check
+// @returns             bool
+higherTimeframe(string timeframe) => timeframe.in_seconds() > timeframe.in_seconds(timeframe)
+
+// @function            Stochastic Oscillator — puerto directo de docs/stochastic_oscillator.pine
+//                       (Pine v3 original). No se grafica en panel propio porque este
+//                       script es overlay=true (ver showStochasticTooltip); queda como
+//                       función reusable para la lógica de la estrategia y para los
+//                       marcadores de sobrecompra/sobreventa en el precio.
+// @param length        %K lookback length
+// @param dLength       %D (signal) smoothing length
+// @returns             [slowK, fastD]
+stochasticOscillator(int length, int dLength) =>
+    lowVal  = ta.lowest(low, length)
+    highVal = ta.highest(high, length)
+    slowK   = ((close - lowVal) / (highVal - lowVal)) * 100
+    fastD   = ta.sma(slowK, dLength)
+    [slowK, fastD]
+
+// =====================================================================================
+// MOTOR SMC DIARIO — corre vía request.security("D", ...). Adapta la MISMA lógica que
+// leg()/getCurrentStructure()/displayStructure()/storeOrdeBlock()/deleteOrderBlocks()
+// de más arriba (sin modificar el algoritmo original de LuxAlgo), pero SIN las llamadas
+// a dibujo que tienen adentro — Pine no permite crear line.new/box.new/label.new dentro
+// de una función evaluada por request.security, solo puede devolver valores (ver
+// docs/plans/bugs.md). El dibujo de lo que esto calcula se hace de vuelta en el cuerpo
+// principal del script, en el timeframe del chart, usando los timestamps devueltos.
+// Estado 100% separado del motor nativo (swingHigh/internalHigh/etc. a nivel de script)
+// para no compartir variables entre el contexto diario y el del chart.
+// =====================================================================================
+
+// @function            puerto de storeOrdeBlock() — sin llamadas de dibujo, recibe los
+//                       arrays por parámetro en vez de leerlos de variables globales.
+// @param pivotBarIdx   bar_index (en el contexto que se está evaluando) del pivot base
+// @param bias          BULLISH o BEARISH
+// @param parsedHighsArr/parsedLowsArr/timesArr  arrays acumulados bar a bar
+// @param topArr/botArr/obTimeArr/biasArr        arrays de Order Blocks a actualizar
+// @returns             void
+storeObDaily(int pivotBarIdx, int bias, array<float> parsedHighsArr, array<float> parsedLowsArr, array<int> timesArr, array<float> topArr, array<float> botArr, array<int> obTimeArr, array<int> biasArr) =>
+    // pivotBarIdx >= 0: en las primeras barras del histórico diario, bar_index - 5
+    // (interno) o bar_index - 50 (swing) puede dar negativo — sin este guard,
+    // array.get(parsedHighsArr/parsedLowsArr, pivotBarIdx) rompería con índice negativo
+    // (mismo tipo de bug que el insertion sort de más abajo, ver docs/plans/bugs.md).
+    if not na(pivotBarIdx) and pivotBarIdx >= 0 and pivotBarIdx < bar_index
+        bestIdx = pivotBarIdx
+        if bias == BEARISH
+            bestVal = array.get(parsedHighsArr, pivotBarIdx)
+            for k = pivotBarIdx + 1 to bar_index - 1
+                v = array.get(parsedHighsArr, k)
+                if v > bestVal
+                    bestVal := v
+                    bestIdx := k
+        else
+            bestVal = array.get(parsedLowsArr, pivotBarIdx)
+            for k = pivotBarIdx + 1 to bar_index - 1
+                v = array.get(parsedLowsArr, k)
+                if v < bestVal
+                    bestVal := v
+                    bestIdx := k
+        array.unshift(topArr, array.get(parsedHighsArr, bestIdx))
+        array.unshift(botArr, array.get(parsedLowsArr, bestIdx))
+        array.unshift(obTimeArr, array.get(timesArr, bestIdx))
+        array.unshift(biasArr, bias)
+        if array.size(topArr) > 100
+            array.pop(topArr)
+            array.pop(botArr)
+            array.pop(obTimeArr)
+            array.pop(biasArr)
+
+// @function            puerto de deleteOrderBlocks() — modo High/Low fijo (el default
+//                       de orderBlockMitigationInput); usa high/low directo en vez del
+//                       bearishOrderBlockMitigationSource/bullishOrderBlockMitigationSource
+//                       globales para evitar dudas sobre en qué contexto se resolverían
+//                       esas variables si se referenciaran desde dentro de request.security.
+// @returns             void
+deleteObDaily(array<float> topArr, array<float> botArr, array<int> obTimeArr, array<int> biasArr) =>
+    i = array.size(topArr) - 1
+    while i >= 0
+        d = array.get(biasArr, i)
+        mitigated = (d == BEARISH and high > array.get(topArr, i)) or (d == BULLISH and low < array.get(botArr, i))
+        if mitigated
+            array.remove(topArr, i)
+            array.remove(botArr, i)
+            array.remove(obTimeArr, i)
+            array.remove(biasArr, i)
+        i -= 1
+
+// @function            puerto del push+cap de eventos de estructura BOS/CHoCH — función
+//                       top-level (no anidada en dailyEngine(), Pine no lo permite, mismo
+//                       motivo que storeObDaily/deleteObDaily) que recibe los 5 arrays
+//                       paralelos por parámetro y aplica el cupo (push+shift).
+//                       cap subido de 3 a EVENT_CAP (ver docs/plans/bugs.md): el SMC
+//                       nativo no "mitiga" EQL/estructura, muestra TODO el histórico en
+//                       modo Historical — un cupo más generoso acerca mucho la
+//                       comparación visual sin pasar al patrón de arrays sin límite.
+// @returns             void
+pushEventD(array<string> tagArr, array<int> biasArr, array<float> levelArr, array<int> originArr, array<int> breakArr, string tag, int bias, float level, int originTime, int breakTime, int cap) =>
+    array.push(tagArr, tag)
+    array.push(biasArr, bias)
+    array.push(levelArr, level)
+    array.push(originArr, originTime)
+    array.push(breakArr, breakTime)
+    if array.size(tagArr) > cap
+        array.shift(tagArr)
+        array.shift(biasArr)
+        array.shift(levelArr)
+        array.shift(originArr)
+        array.shift(breakArr)
+
+// @function            atajos para el patrón "índice < tamaño ? array.get(...) : na"
+//                       repetido decenas de veces al aplanar arrays a escalares —
+//                       uno por tipo porque Pine no tiene genéricos para esto.
+// @returns             el valor en el índice, o na si está fuera de rango
+getF(array<float> a, int i) => i < array.size(a) ? array.get(a, i) : na
+getI(array<int> a, int i) => i < array.size(a) ? array.get(a, i) : na
+getS(array<string> a, int i) => i < array.size(a) ? array.get(a, i) : na
+
+// @function            Motor SMC diario completo — invocado vía request.security("D", ...).
+//                       Devuelve tendencia interna + hasta 5 Equal Lows + hasta 5 Order
+//                       Blocks (internos+swing combinados, ordenados por top descendente),
+//                       más (agregado después, al final de la tupla) Equal Highs, Order
+//                       Blocks crudos internos/swing, eventos de estructura BOS/CHoCH y
+//                       puntos swing HH/HL/LH/LL — todo para restaurar la visualización
+//                       completa que el motor nativo mostraba (ver docs/plans/bugs.md).
+// @returns             [dTrend, eql1..5Price, eql1..5Time, ob1..5Top, ob1..5Bot, ob1..5Time, ob1..5Bias, ...visualización]
+dailyEngine() =>
+    // ---- parsed bars (mismo filtro de volatilidad que el motor nativo) ----
+    atrMeasureD  = ta.atr(200)
+    highVolBarD  = (high - low) >= (2 * atrMeasureD)
+    parsedHighD  = highVolBarD ? low  : high
+    parsedLowD   = highVolBarD ? high : low
+
+    var array<float> parsedHighsD = array.new<float>()
+    var array<float> parsedLowsD  = array.new<float>()
+    var array<int>   timesD       = array.new<int>()
+    array.push(parsedHighsD, parsedHighD)
+    array.push(parsedLowsD, parsedLowD)
+    array.push(timesD, time)
+
+    // ---- leg state — 3 tamaños fijos: internal=5, swing=50, equal=3 ----
+    var int legInternalD = 0
+    var int legSwingD    = 0
+    var int legEqualD    = 0
+
+    prevLegInternalD = legInternalD
+    prevLegSwingD    = legSwingD
+    prevLegEqualD    = legEqualD
+
+    legInternalD := high[5]  > ta.highest(5)  ? 0 : low[5]  < ta.lowest(5)  ? 1 : legInternalD
+    // swingsLengthInput/equalHighsLowsLengthInput: antes hardcodeados a 50/3 (los
+    // defaults), por lo que si el usuario cambiaba esos inputs el motor diario dejaba
+    // de coincidir con lo que mostraría el motor nativo (getCurrentStructure(swingsLengthInput,...)
+    // / getCurrentStructure(equalHighsLowsLengthInput,true)) — ver docs/plans/bugs.md.
+    legSwingD    := high[swingsLengthInput] > ta.highest(swingsLengthInput) ? 0 : low[swingsLengthInput] < ta.lowest(swingsLengthInput) ? 1 : legSwingD
+    legEqualD    := high[equalHighsLowsLengthInput] > ta.highest(equalHighsLowsLengthInput) ? 0 : low[equalHighsLowsLengthInput] < ta.lowest(equalHighsLowsLengthInput) ? 1 : legEqualD
+
+    newPivotInternalD  = legInternalD != prevLegInternalD
+    pivotLowInternalD  = newPivotInternalD and (legInternalD - prevLegInternalD) == 1
+    pivotHighInternalD = newPivotInternalD and (legInternalD - prevLegInternalD) == -1
+
+    newPivotSwingD  = legSwingD != prevLegSwingD
+    pivotLowSwingD  = newPivotSwingD and (legSwingD - prevLegSwingD) == 1
+    pivotHighSwingD = newPivotSwingD and (legSwingD - prevLegSwingD) == -1
+
+    newPivotEqualD  = legEqualD != prevLegEqualD
+    pivotLowEqualD  = newPivotEqualD and (legEqualD - prevLegEqualD) == 1
+    pivotHighEqualD = newPivotEqualD and (legEqualD - prevLegEqualD) == -1
+
+    // ---- pivots ----
+    var float internalHighLevelD   = na
+    var float internalLowLevelD    = na
+    var bool  internalHighCrossedD = false
+    var bool  internalLowCrossedD  = false
+    var int   internalHighBarD     = na
+    var int   internalLowBarD      = na
+    // ...TimeD: timestamp real del pivot (no índice de barra) — necesario para dibujar
+    // la línea de estructura BOS/CHoCH (originTime→breakTime) en el contexto del chart.
+    var int   internalHighTimeD    = na
+    var int   internalLowTimeD     = na
+
+    var float swingHighLevelD   = na
+    var float swingLowLevelD    = na
+    var bool  swingHighCrossedD = false
+    var bool  swingLowCrossedD  = false
+    var int   swingHighBarD     = na
+    var int   swingLowBarD      = na
+    var int   swingHighTimeD    = na
+    var int   swingLowTimeD     = na
+
+    var float equalHighLevelD = na
+    var float equalLowLevelD  = na
+    // equivalente a p_ivot.barTime en el nativo — tiempo del último pivot equal visto
+    // (haya o no resultado en match), necesario como punto de ORIGEN del segmento
+    // EQL/EQH (antes faltaba por completo, causa raíz del bug de geometría — ver
+    // docs/plans/bugs.md).
+    var int   equalHighTimeD  = na
+    var int   equalLowTimeD   = na
+
+    // ---- puntos swing HH/HL/LH/LL — solo para la estructura SWING (50 velas), igual que
+    // el nativo (showSwingsInput and not internal en getCurrentStructure no etiqueta la
+    // interna). Cupo 3, mismo principio que EQL/OB. tag se decide comparando contra el
+    // nivel PREVIO del lado correspondiente (capturado antes de reasignar, igual que
+    // p_ivot.lastLevel en el nativo).
+    var array<string> swingPointTagD   = array.new<string>()
+    var array<float>  swingPointLevelD = array.new<float>()
+    var array<int>    swingPointTimeD  = array.new<int>()
+
+    if newPivotInternalD
+        if pivotLowInternalD
+            internalLowLevelD   := low[5]
+            internalLowBarD     := bar_index - 5
+            internalLowTimeD    := time[5]
+            internalLowCrossedD := false
+        else if pivotHighInternalD
+            internalHighLevelD   := high[5]
+            internalHighBarD     := bar_index - 5
+            internalHighTimeD    := time[5]
+            internalHighCrossedD := false
+
+    if newPivotSwingD
+        if pivotLowSwingD
+            prevSwingLowLevelD = swingLowLevelD
+            swingLowLevelD   := low[swingsLengthInput]
+            swingLowBarD     := bar_index - swingsLengthInput
+            swingLowTimeD    := time[swingsLengthInput]
+            swingLowCrossedD := false
+            array.push(swingPointTagD, swingLowLevelD < prevSwingLowLevelD ? 'LL' : 'HL')
+            array.push(swingPointLevelD, swingLowLevelD)
+            array.push(swingPointTimeD, swingLowTimeD)
+            if array.size(swingPointTagD) > 10
+                array.shift(swingPointTagD)
+                array.shift(swingPointLevelD)
+                array.shift(swingPointTimeD)
+        else if pivotHighSwingD
+            prevSwingHighLevelD = swingHighLevelD
+            swingHighLevelD   := high[swingsLengthInput]
+            swingHighBarD     := bar_index - swingsLengthInput
+            swingHighTimeD    := time[swingsLengthInput]
+            swingHighCrossedD := false
+            array.push(swingPointTagD, swingHighLevelD > prevSwingHighLevelD ? 'HH' : 'LH')
+            array.push(swingPointLevelD, swingHighLevelD)
+            array.push(swingPointTimeD, swingHighTimeD)
+            if array.size(swingPointTagD) > 10
+                array.shift(swingPointTagD)
+                array.shift(swingPointLevelD)
+                array.shift(swingPointTimeD)
+
+    // ---- Equal Lows/Highs — mismo umbral ATR que el motor nativo. EQH ahora también se
+    // compara contra el umbral y se guarda en un array capado (antes solo se actualizaba
+    // el nivel "lastLevel" sin guardar historial, porque LONG-only no lo necesitaba para
+    // el score — ahora sí se expone para la visualización, ver docs/plans/bugs.md). ----
+    var array<float> eqlPriceArrD   = array.new<float>()
+    var array<int>   eqlTimeArrD    = array.new<int>()
+    // eqlOrgTimeArrD: tiempo del pivot ANTERIOR (equalLowTimeD antes de actualizarse) —
+    // junto con eqlTimeArrD (confirmación) forman el segmento real que dibuja el nativo
+    // drawEqualHighLow (origen→confirmación), no un punto único. Antes faltaba esto por
+    // completo (causa raíz del bug de geometría EQL/EQH — ver docs/plans/bugs.md).
+    var array<int>   eqlOrgTimeArrD = array.new<int>()
+    var array<float> eqhPriceArrD   = array.new<float>()
+    var array<int>   eqhTimeArrD    = array.new<int>()
+    var array<int>   eqhOrgTimeArrD = array.new<int>()
+
+    if newPivotEqualD
+        if pivotLowEqualD
+            candLowD     = low[equalHighsLowsLengthInput]
+            candLowTimeD = time[equalHighsLowsLengthInput]
+            if not na(equalLowLevelD) and math.abs(equalLowLevelD - candLowD) < equalHighsLowsThresholdInput * atrMeasureD
+                array.push(eqlPriceArrD, candLowD)
+                array.push(eqlOrgTimeArrD, equalLowTimeD)
+                array.push(eqlTimeArrD, candLowTimeD)
+                if array.size(eqlPriceArrD) > 20
+                    array.shift(eqlPriceArrD)
+                    array.shift(eqlOrgTimeArrD)
+                    array.shift(eqlTimeArrD)
+            equalLowLevelD := candLowD
+            equalLowTimeD  := candLowTimeD
+        else if pivotHighEqualD
+            candHighD     = high[equalHighsLowsLengthInput]
+            candHighTimeD = time[equalHighsLowsLengthInput]
+            if not na(equalHighLevelD) and math.abs(equalHighLevelD - candHighD) < equalHighsLowsThresholdInput * atrMeasureD
+                array.push(eqhPriceArrD, candHighD)
+                array.push(eqhOrgTimeArrD, equalHighTimeD)
+                array.push(eqhTimeArrD, candHighTimeD)
+                if array.size(eqhPriceArrD) > 20
+                    array.shift(eqhPriceArrD)
+                    array.shift(eqhOrgTimeArrD)
+                    array.shift(eqhTimeArrD)
+            equalHighLevelD := candHighD
+            equalHighTimeD  := candHighTimeD
+
+    // ---- BOS/CHoCH (interno primero, luego swing — mismo orden que el motor nativo) ----
+    var int internalTrendD = 0
+    var int swingTrendD    = 0
+
+    var array<float> internalObTopD  = array.new<float>()
+    var array<float> internalObBotD  = array.new<float>()
+    var array<int>   internalObTimeD = array.new<int>()
+    var array<int>   internalObBiasD = array.new<int>()
+
+    var array<float> swingObTopD  = array.new<float>()
+    var array<float> swingObBotD  = array.new<float>()
+    var array<int>   swingObTimeD = array.new<int>()
+    var array<int>   swingObBiasD = array.new<int>()
+
+    // ---- eventos de estructura BOS/CHoCH — cupo 3 por lado (interno/swing), igual
+    // principio que EQL/OB/puntos swing. El tag CHOCH/BOS se decide comparando contra
+    // el trend PREVIO a la reasignación (capturado antes de "...TrendD := ..."), mismo
+    // criterio que el nativo: "t_rend.bias == BEARISH ? CHOCH : BOS" para un quiebre
+    // alcista (y espejado para uno bajista).
+    var array<string> internalEventTagD        = array.new<string>()
+    var array<int>    internalEventBiasD        = array.new<int>()
+    var array<float>  internalEventLevelD       = array.new<float>()
+    var array<int>    internalEventOriginTimeD  = array.new<int>()
+    var array<int>    internalEventBreakTimeD   = array.new<int>()
+
+    var array<string> swingEventTagD        = array.new<string>()
+    var array<int>    swingEventBiasD        = array.new<int>()
+    var array<float>  swingEventLevelD       = array.new<float>()
+    var array<int>    swingEventOriginTimeD  = array.new<int>()
+    var array<int>    swingEventBreakTimeD   = array.new<int>()
+
+    extraBullInternalD = na(swingHighLevelD) or internalHighLevelD != swingHighLevelD
+    if not na(internalHighLevelD) and not internalHighCrossedD and extraBullInternalD
+        if ta.crossover(close, internalHighLevelD)
+            prevInternalTrendD = internalTrendD
+            internalHighCrossedD := true
+            internalTrendD := 1
+            pushEventD(internalEventTagD, internalEventBiasD, internalEventLevelD, internalEventOriginTimeD, internalEventBreakTimeD, prevInternalTrendD == -1 ? CHOCH : BOS, BULLISH, internalHighLevelD, internalHighTimeD, time, 10)
+            storeObDaily(internalHighBarD, BULLISH, parsedHighsD, parsedLowsD, timesD, internalObTopD, internalObBotD, internalObTimeD, internalObBiasD)
+
+    extraBearInternalD = na(swingLowLevelD) or internalLowLevelD != swingLowLevelD
+    if not na(internalLowLevelD) and not internalLowCrossedD and extraBearInternalD
+        if ta.crossunder(close, internalLowLevelD)
+            prevInternalTrendD2 = internalTrendD
+            internalLowCrossedD := true
+            internalTrendD := -1
+            pushEventD(internalEventTagD, internalEventBiasD, internalEventLevelD, internalEventOriginTimeD, internalEventBreakTimeD, prevInternalTrendD2 == 1 ? CHOCH : BOS, BEARISH, internalLowLevelD, internalLowTimeD, time, 10)
+            storeObDaily(internalLowBarD, BEARISH, parsedHighsD, parsedLowsD, timesD, internalObTopD, internalObBotD, internalObTimeD, internalObBiasD)
+
+    if not na(swingHighLevelD) and not swingHighCrossedD
+        if ta.crossover(close, swingHighLevelD)
+            prevSwingTrendD = swingTrendD
+            swingHighCrossedD := true
+            swingTrendD := 1
+            pushEventD(swingEventTagD, swingEventBiasD, swingEventLevelD, swingEventOriginTimeD, swingEventBreakTimeD, prevSwingTrendD == -1 ? CHOCH : BOS, BULLISH, swingHighLevelD, swingHighTimeD, time, 10)
+            storeObDaily(swingHighBarD, BULLISH, parsedHighsD, parsedLowsD, timesD, swingObTopD, swingObBotD, swingObTimeD, swingObBiasD)
+
+    if not na(swingLowLevelD) and not swingLowCrossedD
+        if ta.crossunder(close, swingLowLevelD)
+            prevSwingTrendD2 = swingTrendD
+            swingLowCrossedD := true
+            swingTrendD := -1
+            pushEventD(swingEventTagD, swingEventBiasD, swingEventLevelD, swingEventOriginTimeD, swingEventBreakTimeD, prevSwingTrendD2 == 1 ? CHOCH : BOS, BEARISH, swingLowLevelD, swingLowTimeD, time, 10)
+            storeObDaily(swingLowBarD, BEARISH, parsedHighsD, parsedLowsD, timesD, swingObTopD, swingObBotD, swingObTimeD, swingObBiasD)
+
+    // ---- Mitigación ----
+    deleteObDaily(internalObTopD, internalObBotD, internalObTimeD, internalObBiasD)
+    deleteObDaily(swingObTopD, swingObBotD, swingObTimeD, swingObBiasD)
+
+    // ---- Aplanado: combinar internos+swing, ordenar por top descendente, top 5 ----
+    // (mismo "ob.top > best.top" de exist_orderblock en Python — con la lista pre-
+    // ordenada, el primero que matchea en el escaneo 4H ya es el máximo)
+    workTopD  = array.copy(internalObTopD)
+    workBotD  = array.copy(internalObBotD)
+    workTimeD = array.copy(internalObTimeD)
+    workBiasD = array.copy(internalObBiasD)
+    array.concat(workTopD, array.copy(swingObTopD))
+    array.concat(workBotD, array.copy(swingObBotD))
+    array.concat(workTimeD, array.copy(swingObTimeD))
+    array.concat(workBiasD, array.copy(swingObBiasD))
+
+    // Pine invierte la dirección del for cuando from > to sin `by` explícito — con
+    // nObD 0 o 1 el loop igual ejecutaría y rompería con array.get fuera de rango
+    // (ya nos pasó una vez, ver docs/plans/bugs.md) — por eso el guard nObD > 1.
+    nObD = array.size(workTopD)
+    if nObD > 1
+        for i = 1 to nObD - 1
+            keyTop  = array.get(workTopD, i)
+            keyBot  = array.get(workBotD, i)
+            keyTime = array.get(workTimeD, i)
+            keyBias = array.get(workBiasD, i)
+            j = i - 1
+            // Pine no hace cortocircuito en "and"/"or" — AMBOS operandos se evalúan
+            // siempre, incluso si el primero ya decide el resultado (gotcha documentado
+            // en docs/plans/bugs.md). "j >= 0 and array.get(workTopD, j) < keyTop" en un
+            // único while evaluaba array.get(workTopD, -1) aunque j ya fuera -1, rompiendo
+            // con "index -1 out of bounds". Fix: separar el chequeo de límites en su propia
+            // rama if ANTES de tocar el array — las ramas if/else sí cortan en seco.
+            keepGoing = true
+            while keepGoing
+                if j < 0
+                    keepGoing := false
+                else if array.get(workTopD, j) < keyTop
+                    array.set(workTopD, j + 1, array.get(workTopD, j))
+                    array.set(workBotD, j + 1, array.get(workBotD, j))
+                    array.set(workTimeD, j + 1, array.get(workTimeD, j))
+                    array.set(workBiasD, j + 1, array.get(workBiasD, j))
+                    j -= 1
+                else
+                    keepGoing := false
+            array.set(workTopD, j + 1, keyTop)
+            array.set(workBotD, j + 1, keyBot)
+            array.set(workTimeD, j + 1, keyTime)
+            array.set(workBiasD, j + 1, keyBias)
+
+    nEqlD = array.size(eqlPriceArrD)
+    eql1 = nEqlD > 0 ? array.get(eqlPriceArrD, 0) : na
+    eql2 = nEqlD > 1 ? array.get(eqlPriceArrD, 1) : na
+    eql3 = nEqlD > 2 ? array.get(eqlPriceArrD, 2) : na
+    eql4 = nEqlD > 3 ? array.get(eqlPriceArrD, 3) : na
+    eql5 = nEqlD > 4 ? array.get(eqlPriceArrD, 4) : na
+    eqlT1 = nEqlD > 0 ? array.get(eqlTimeArrD, 0) : na
+    eqlT2 = nEqlD > 1 ? array.get(eqlTimeArrD, 1) : na
+    eqlT3 = nEqlD > 2 ? array.get(eqlTimeArrD, 2) : na
+    eqlT4 = nEqlD > 3 ? array.get(eqlTimeArrD, 3) : na
+    eqlT5 = nEqlD > 4 ? array.get(eqlTimeArrD, 4) : na
+
+    ob1Top = nObD > 0 ? array.get(workTopD, 0) : na
+    ob1Bot = nObD > 0 ? array.get(workBotD, 0) : na
+    ob1T   = nObD > 0 ? array.get(workTimeD, 0) : na
+    ob1B   = nObD > 0 ? array.get(workBiasD, 0) : na
+    ob2Top = nObD > 1 ? array.get(workTopD, 1) : na
+    ob2Bot = nObD > 1 ? array.get(workBotD, 1) : na
+    ob2T   = nObD > 1 ? array.get(workTimeD, 1) : na
+    ob2B   = nObD > 1 ? array.get(workBiasD, 1) : na
+    ob3Top = nObD > 2 ? array.get(workTopD, 2) : na
+    ob3Bot = nObD > 2 ? array.get(workBotD, 2) : na
+    ob3T   = nObD > 2 ? array.get(workTimeD, 2) : na
+    ob3B   = nObD > 2 ? array.get(workBiasD, 2) : na
+    ob4Top = nObD > 3 ? array.get(workTopD, 3) : na
+    ob4Bot = nObD > 3 ? array.get(workBotD, 3) : na
+    ob4T   = nObD > 3 ? array.get(workTimeD, 3) : na
+    ob4B   = nObD > 3 ? array.get(workBiasD, 3) : na
+    ob5Top = nObD > 4 ? array.get(workTopD, 4) : na
+    ob5Bot = nObD > 4 ? array.get(workBotD, 4) : na
+    ob5T   = nObD > 4 ? array.get(workTimeD, 4) : na
+    ob5B   = nObD > 4 ? array.get(workBiasD, 4) : na
+
+    // ===== A PARTIR DE AQUÍ: campos agregados AL FINAL para restaurar la visualización
+    // completa (EQH, Order Blocks crudos sin fusionar, eventos BOS/CHoCH, puntos swing
+    // HH/HL/LH/LL) — el orden/contenido de TODO lo de arriba (eql1..5/ob1..5, las
+    // primeras 31 posiciones, usadas por el score) NO cambió, ver docs/plans/bugs.md.
+    //
+    // Cupos subidos de 5/3 a 20/10 (ver "RESUELTO: cupo de visualización subido..." en
+    // docs/plans/bugs.md): el SMC nativo no "mitiga" EQL/EQH/estructura — en modo
+    // Historical (default) muestra TODO el histórico del chart a la vez, así que con
+    // cupo 5/3 la comparación 1:1 nunca terminaba de coincidir (Nexora solo mostraba
+    // los últimos eventos). getF/getI/getS (definidas arriba, junto a pushEventD)
+    // acortan "i < array.size(a) ? array.get(a,i) : na".
+    // =====
+
+    // ---- EQL: slots 6..20 nuevos (1..5 ya están arriba, parte de la tupla original) ----
+    eql6  = getF(eqlPriceArrD, 5)
+    eql7  = getF(eqlPriceArrD, 6)
+    eql8  = getF(eqlPriceArrD, 7)
+    eql9  = getF(eqlPriceArrD, 8)
+    eql10 = getF(eqlPriceArrD, 9)
+    eql11 = getF(eqlPriceArrD, 10)
+    eql12 = getF(eqlPriceArrD, 11)
+    eql13 = getF(eqlPriceArrD, 12)
+    eql14 = getF(eqlPriceArrD, 13)
+    eql15 = getF(eqlPriceArrD, 14)
+    eql16 = getF(eqlPriceArrD, 15)
+    eql17 = getF(eqlPriceArrD, 16)
+    eql18 = getF(eqlPriceArrD, 17)
+    eql19 = getF(eqlPriceArrD, 18)
+    eql20 = getF(eqlPriceArrD, 19)
+    eqlT6  = getI(eqlTimeArrD, 5)
+    eqlT7  = getI(eqlTimeArrD, 6)
+    eqlT8  = getI(eqlTimeArrD, 7)
+    eqlT9  = getI(eqlTimeArrD, 8)
+    eqlT10 = getI(eqlTimeArrD, 9)
+    eqlT11 = getI(eqlTimeArrD, 10)
+    eqlT12 = getI(eqlTimeArrD, 11)
+    eqlT13 = getI(eqlTimeArrD, 12)
+    eqlT14 = getI(eqlTimeArrD, 13)
+    eqlT15 = getI(eqlTimeArrD, 14)
+    eqlT16 = getI(eqlTimeArrD, 15)
+    eqlT17 = getI(eqlTimeArrD, 16)
+    eqlT18 = getI(eqlTimeArrD, 17)
+    eqlT19 = getI(eqlTimeArrD, 18)
+    eqlT20 = getI(eqlTimeArrD, 19)
+    eqlOrgT1  = getI(eqlOrgTimeArrD, 0)
+    eqlOrgT2  = getI(eqlOrgTimeArrD, 1)
+    eqlOrgT3  = getI(eqlOrgTimeArrD, 2)
+    eqlOrgT4  = getI(eqlOrgTimeArrD, 3)
+    eqlOrgT5  = getI(eqlOrgTimeArrD, 4)
+    eqlOrgT6  = getI(eqlOrgTimeArrD, 5)
+    eqlOrgT7  = getI(eqlOrgTimeArrD, 6)
+    eqlOrgT8  = getI(eqlOrgTimeArrD, 7)
+    eqlOrgT9  = getI(eqlOrgTimeArrD, 8)
+    eqlOrgT10 = getI(eqlOrgTimeArrD, 9)
+    eqlOrgT11 = getI(eqlOrgTimeArrD, 10)
+    eqlOrgT12 = getI(eqlOrgTimeArrD, 11)
+    eqlOrgT13 = getI(eqlOrgTimeArrD, 12)
+    eqlOrgT14 = getI(eqlOrgTimeArrD, 13)
+    eqlOrgT15 = getI(eqlOrgTimeArrD, 14)
+    eqlOrgT16 = getI(eqlOrgTimeArrD, 15)
+    eqlOrgT17 = getI(eqlOrgTimeArrD, 16)
+    eqlOrgT18 = getI(eqlOrgTimeArrD, 17)
+    eqlOrgT19 = getI(eqlOrgTimeArrD, 18)
+    eqlOrgT20 = getI(eqlOrgTimeArrD, 19)
+
+    // ---- EQH: 20 slots completos ----
+    eqh1  = getF(eqhPriceArrD, 0)
+    eqh2  = getF(eqhPriceArrD, 1)
+    eqh3  = getF(eqhPriceArrD, 2)
+    eqh4  = getF(eqhPriceArrD, 3)
+    eqh5  = getF(eqhPriceArrD, 4)
+    eqh6  = getF(eqhPriceArrD, 5)
+    eqh7  = getF(eqhPriceArrD, 6)
+    eqh8  = getF(eqhPriceArrD, 7)
+    eqh9  = getF(eqhPriceArrD, 8)
+    eqh10 = getF(eqhPriceArrD, 9)
+    eqh11 = getF(eqhPriceArrD, 10)
+    eqh12 = getF(eqhPriceArrD, 11)
+    eqh13 = getF(eqhPriceArrD, 12)
+    eqh14 = getF(eqhPriceArrD, 13)
+    eqh15 = getF(eqhPriceArrD, 14)
+    eqh16 = getF(eqhPriceArrD, 15)
+    eqh17 = getF(eqhPriceArrD, 16)
+    eqh18 = getF(eqhPriceArrD, 17)
+    eqh19 = getF(eqhPriceArrD, 18)
+    eqh20 = getF(eqhPriceArrD, 19)
+    eqhT1  = getI(eqhTimeArrD, 0)
+    eqhT2  = getI(eqhTimeArrD, 1)
+    eqhT3  = getI(eqhTimeArrD, 2)
+    eqhT4  = getI(eqhTimeArrD, 3)
+    eqhT5  = getI(eqhTimeArrD, 4)
+    eqhT6  = getI(eqhTimeArrD, 5)
+    eqhT7  = getI(eqhTimeArrD, 6)
+    eqhT8  = getI(eqhTimeArrD, 7)
+    eqhT9  = getI(eqhTimeArrD, 8)
+    eqhT10 = getI(eqhTimeArrD, 9)
+    eqhT11 = getI(eqhTimeArrD, 10)
+    eqhT12 = getI(eqhTimeArrD, 11)
+    eqhT13 = getI(eqhTimeArrD, 12)
+    eqhT14 = getI(eqhTimeArrD, 13)
+    eqhT15 = getI(eqhTimeArrD, 14)
+    eqhT16 = getI(eqhTimeArrD, 15)
+    eqhT17 = getI(eqhTimeArrD, 16)
+    eqhT18 = getI(eqhTimeArrD, 17)
+    eqhT19 = getI(eqhTimeArrD, 18)
+    eqhT20 = getI(eqhTimeArrD, 19)
+    eqhOrgT1  = getI(eqhOrgTimeArrD, 0)
+    eqhOrgT2  = getI(eqhOrgTimeArrD, 1)
+    eqhOrgT3  = getI(eqhOrgTimeArrD, 2)
+    eqhOrgT4  = getI(eqhOrgTimeArrD, 3)
+    eqhOrgT5  = getI(eqhOrgTimeArrD, 4)
+    eqhOrgT6  = getI(eqhOrgTimeArrD, 5)
+    eqhOrgT7  = getI(eqhOrgTimeArrD, 6)
+    eqhOrgT8  = getI(eqhOrgTimeArrD, 7)
+    eqhOrgT9  = getI(eqhOrgTimeArrD, 8)
+    eqhOrgT10 = getI(eqhOrgTimeArrD, 9)
+    eqhOrgT11 = getI(eqhOrgTimeArrD, 10)
+    eqhOrgT12 = getI(eqhOrgTimeArrD, 11)
+    eqhOrgT13 = getI(eqhOrgTimeArrD, 12)
+    eqhOrgT14 = getI(eqhOrgTimeArrD, 13)
+    eqhOrgT15 = getI(eqhOrgTimeArrD, 14)
+    eqhOrgT16 = getI(eqhOrgTimeArrD, 15)
+    eqhOrgT17 = getI(eqhOrgTimeArrD, 16)
+    eqhOrgT18 = getI(eqhOrgTimeArrD, 17)
+    eqhOrgT19 = getI(eqhOrgTimeArrD, 18)
+    eqhOrgT20 = getI(eqhOrgTimeArrD, 19)
+
+    // ---- Order Blocks internos crudos: 20 slots completos (NO reemplazan a ob1..5,
+    // que siguen alimentando existOrderblock4h/el score tal cual) ----
+    iob1Top  = getF(internalObTopD, 0)
+    iob1Bot  = getF(internalObBotD, 0)
+    iob1T    = getI(internalObTimeD, 0)
+    iob1B    = getI(internalObBiasD, 0)
+    iob2Top  = getF(internalObTopD, 1)
+    iob2Bot  = getF(internalObBotD, 1)
+    iob2T    = getI(internalObTimeD, 1)
+    iob2B    = getI(internalObBiasD, 1)
+    iob3Top  = getF(internalObTopD, 2)
+    iob3Bot  = getF(internalObBotD, 2)
+    iob3T    = getI(internalObTimeD, 2)
+    iob3B    = getI(internalObBiasD, 2)
+    iob4Top  = getF(internalObTopD, 3)
+    iob4Bot  = getF(internalObBotD, 3)
+    iob4T    = getI(internalObTimeD, 3)
+    iob4B    = getI(internalObBiasD, 3)
+    iob5Top  = getF(internalObTopD, 4)
+    iob5Bot  = getF(internalObBotD, 4)
+    iob5T    = getI(internalObTimeD, 4)
+    iob5B    = getI(internalObBiasD, 4)
+    iob6Top  = getF(internalObTopD, 5)
+    iob6Bot  = getF(internalObBotD, 5)
+    iob6T    = getI(internalObTimeD, 5)
+    iob6B    = getI(internalObBiasD, 5)
+    iob7Top  = getF(internalObTopD, 6)
+    iob7Bot  = getF(internalObBotD, 6)
+    iob7T    = getI(internalObTimeD, 6)
+    iob7B    = getI(internalObBiasD, 6)
+    iob8Top  = getF(internalObTopD, 7)
+    iob8Bot  = getF(internalObBotD, 7)
+    iob8T    = getI(internalObTimeD, 7)
+    iob8B    = getI(internalObBiasD, 7)
+    iob9Top  = getF(internalObTopD, 8)
+    iob9Bot  = getF(internalObBotD, 8)
+    iob9T    = getI(internalObTimeD, 8)
+    iob9B    = getI(internalObBiasD, 8)
+    iob10Top = getF(internalObTopD, 9)
+    iob10Bot = getF(internalObBotD, 9)
+    iob10T   = getI(internalObTimeD, 9)
+    iob10B   = getI(internalObBiasD, 9)
+    iob11Top = getF(internalObTopD, 10)
+    iob11Bot = getF(internalObBotD, 10)
+    iob11T   = getI(internalObTimeD, 10)
+    iob11B   = getI(internalObBiasD, 10)
+    iob12Top = getF(internalObTopD, 11)
+    iob12Bot = getF(internalObBotD, 11)
+    iob12T   = getI(internalObTimeD, 11)
+    iob12B   = getI(internalObBiasD, 11)
+    iob13Top = getF(internalObTopD, 12)
+    iob13Bot = getF(internalObBotD, 12)
+    iob13T   = getI(internalObTimeD, 12)
+    iob13B   = getI(internalObBiasD, 12)
+    iob14Top = getF(internalObTopD, 13)
+    iob14Bot = getF(internalObBotD, 13)
+    iob14T   = getI(internalObTimeD, 13)
+    iob14B   = getI(internalObBiasD, 13)
+    iob15Top = getF(internalObTopD, 14)
+    iob15Bot = getF(internalObBotD, 14)
+    iob15T   = getI(internalObTimeD, 14)
+    iob15B   = getI(internalObBiasD, 14)
+    iob16Top = getF(internalObTopD, 15)
+    iob16Bot = getF(internalObBotD, 15)
+    iob16T   = getI(internalObTimeD, 15)
+    iob16B   = getI(internalObBiasD, 15)
+    iob17Top = getF(internalObTopD, 16)
+    iob17Bot = getF(internalObBotD, 16)
+    iob17T   = getI(internalObTimeD, 16)
+    iob17B   = getI(internalObBiasD, 16)
+    iob18Top = getF(internalObTopD, 17)
+    iob18Bot = getF(internalObBotD, 17)
+    iob18T   = getI(internalObTimeD, 17)
+    iob18B   = getI(internalObBiasD, 17)
+    iob19Top = getF(internalObTopD, 18)
+    iob19Bot = getF(internalObBotD, 18)
+    iob19T   = getI(internalObTimeD, 18)
+    iob19B   = getI(internalObBiasD, 18)
+    iob20Top = getF(internalObTopD, 19)
+    iob20Bot = getF(internalObBotD, 19)
+    iob20T   = getI(internalObTimeD, 19)
+    iob20B   = getI(internalObBiasD, 19)
+
+    // ---- Order Blocks swing crudos: 20 slots completos ----
+    sob1Top  = getF(swingObTopD, 0)
+    sob1Bot  = getF(swingObBotD, 0)
+    sob1T    = getI(swingObTimeD, 0)
+    sob1B    = getI(swingObBiasD, 0)
+    sob2Top  = getF(swingObTopD, 1)
+    sob2Bot  = getF(swingObBotD, 1)
+    sob2T    = getI(swingObTimeD, 1)
+    sob2B    = getI(swingObBiasD, 1)
+    sob3Top  = getF(swingObTopD, 2)
+    sob3Bot  = getF(swingObBotD, 2)
+    sob3T    = getI(swingObTimeD, 2)
+    sob3B    = getI(swingObBiasD, 2)
+    sob4Top  = getF(swingObTopD, 3)
+    sob4Bot  = getF(swingObBotD, 3)
+    sob4T    = getI(swingObTimeD, 3)
+    sob4B    = getI(swingObBiasD, 3)
+    sob5Top  = getF(swingObTopD, 4)
+    sob5Bot  = getF(swingObBotD, 4)
+    sob5T    = getI(swingObTimeD, 4)
+    sob5B    = getI(swingObBiasD, 4)
+    sob6Top  = getF(swingObTopD, 5)
+    sob6Bot  = getF(swingObBotD, 5)
+    sob6T    = getI(swingObTimeD, 5)
+    sob6B    = getI(swingObBiasD, 5)
+    sob7Top  = getF(swingObTopD, 6)
+    sob7Bot  = getF(swingObBotD, 6)
+    sob7T    = getI(swingObTimeD, 6)
+    sob7B    = getI(swingObBiasD, 6)
+    sob8Top  = getF(swingObTopD, 7)
+    sob8Bot  = getF(swingObBotD, 7)
+    sob8T    = getI(swingObTimeD, 7)
+    sob8B    = getI(swingObBiasD, 7)
+    sob9Top  = getF(swingObTopD, 8)
+    sob9Bot  = getF(swingObBotD, 8)
+    sob9T    = getI(swingObTimeD, 8)
+    sob9B    = getI(swingObBiasD, 8)
+    sob10Top = getF(swingObTopD, 9)
+    sob10Bot = getF(swingObBotD, 9)
+    sob10T   = getI(swingObTimeD, 9)
+    sob10B   = getI(swingObBiasD, 9)
+    sob11Top = getF(swingObTopD, 10)
+    sob11Bot = getF(swingObBotD, 10)
+    sob11T   = getI(swingObTimeD, 10)
+    sob11B   = getI(swingObBiasD, 10)
+    sob12Top = getF(swingObTopD, 11)
+    sob12Bot = getF(swingObBotD, 11)
+    sob12T   = getI(swingObTimeD, 11)
+    sob12B   = getI(swingObBiasD, 11)
+    sob13Top = getF(swingObTopD, 12)
+    sob13Bot = getF(swingObBotD, 12)
+    sob13T   = getI(swingObTimeD, 12)
+    sob13B   = getI(swingObBiasD, 12)
+    sob14Top = getF(swingObTopD, 13)
+    sob14Bot = getF(swingObBotD, 13)
+    sob14T   = getI(swingObTimeD, 13)
+    sob14B   = getI(swingObBiasD, 13)
+    sob15Top = getF(swingObTopD, 14)
+    sob15Bot = getF(swingObBotD, 14)
+    sob15T   = getI(swingObTimeD, 14)
+    sob15B   = getI(swingObBiasD, 14)
+    sob16Top = getF(swingObTopD, 15)
+    sob16Bot = getF(swingObBotD, 15)
+    sob16T   = getI(swingObTimeD, 15)
+    sob16B   = getI(swingObBiasD, 15)
+    sob17Top = getF(swingObTopD, 16)
+    sob17Bot = getF(swingObBotD, 16)
+    sob17T   = getI(swingObTimeD, 16)
+    sob17B   = getI(swingObBiasD, 16)
+    sob18Top = getF(swingObTopD, 17)
+    sob18Bot = getF(swingObBotD, 17)
+    sob18T   = getI(swingObTimeD, 17)
+    sob18B   = getI(swingObBiasD, 17)
+    sob19Top = getF(swingObTopD, 18)
+    sob19Bot = getF(swingObBotD, 18)
+    sob19T   = getI(swingObTimeD, 18)
+    sob19B   = getI(swingObBiasD, 18)
+    sob20Top = getF(swingObTopD, 19)
+    sob20Bot = getF(swingObBotD, 19)
+    sob20T   = getI(swingObTimeD, 19)
+    sob20B   = getI(swingObBiasD, 19)
+
+    // ---- Eventos de estructura interna BOS/CHoCH: 10 slots completos ----
+    ie1Tag  = getS(internalEventTagD, 0)
+    ie1Bias = getI(internalEventBiasD, 0)
+    ie1Lvl  = getF(internalEventLevelD, 0)
+    ie1Org  = getI(internalEventOriginTimeD, 0)
+    ie1Brk  = getI(internalEventBreakTimeD, 0)
+    ie2Tag  = getS(internalEventTagD, 1)
+    ie2Bias = getI(internalEventBiasD, 1)
+    ie2Lvl  = getF(internalEventLevelD, 1)
+    ie2Org  = getI(internalEventOriginTimeD, 1)
+    ie2Brk  = getI(internalEventBreakTimeD, 1)
+    ie3Tag  = getS(internalEventTagD, 2)
+    ie3Bias = getI(internalEventBiasD, 2)
+    ie3Lvl  = getF(internalEventLevelD, 2)
+    ie3Org  = getI(internalEventOriginTimeD, 2)
+    ie3Brk  = getI(internalEventBreakTimeD, 2)
+    ie4Tag  = getS(internalEventTagD, 3)
+    ie4Bias = getI(internalEventBiasD, 3)
+    ie4Lvl  = getF(internalEventLevelD, 3)
+    ie4Org  = getI(internalEventOriginTimeD, 3)
+    ie4Brk  = getI(internalEventBreakTimeD, 3)
+    ie5Tag  = getS(internalEventTagD, 4)
+    ie5Bias = getI(internalEventBiasD, 4)
+    ie5Lvl  = getF(internalEventLevelD, 4)
+    ie5Org  = getI(internalEventOriginTimeD, 4)
+    ie5Brk  = getI(internalEventBreakTimeD, 4)
+    ie6Tag  = getS(internalEventTagD, 5)
+    ie6Bias = getI(internalEventBiasD, 5)
+    ie6Lvl  = getF(internalEventLevelD, 5)
+    ie6Org  = getI(internalEventOriginTimeD, 5)
+    ie6Brk  = getI(internalEventBreakTimeD, 5)
+    ie7Tag  = getS(internalEventTagD, 6)
+    ie7Bias = getI(internalEventBiasD, 6)
+    ie7Lvl  = getF(internalEventLevelD, 6)
+    ie7Org  = getI(internalEventOriginTimeD, 6)
+    ie7Brk  = getI(internalEventBreakTimeD, 6)
+    ie8Tag  = getS(internalEventTagD, 7)
+    ie8Bias = getI(internalEventBiasD, 7)
+    ie8Lvl  = getF(internalEventLevelD, 7)
+    ie8Org  = getI(internalEventOriginTimeD, 7)
+    ie8Brk  = getI(internalEventBreakTimeD, 7)
+    ie9Tag  = getS(internalEventTagD, 8)
+    ie9Bias = getI(internalEventBiasD, 8)
+    ie9Lvl  = getF(internalEventLevelD, 8)
+    ie9Org  = getI(internalEventOriginTimeD, 8)
+    ie9Brk  = getI(internalEventBreakTimeD, 8)
+    ie10Tag  = getS(internalEventTagD, 9)
+    ie10Bias = getI(internalEventBiasD, 9)
+    ie10Lvl  = getF(internalEventLevelD, 9)
+    ie10Org  = getI(internalEventOriginTimeD, 9)
+    ie10Brk  = getI(internalEventBreakTimeD, 9)
+
+    // ---- Eventos de estructura swing BOS/CHoCH: 10 slots completos ----
+    se1Tag  = getS(swingEventTagD, 0)
+    se1Bias = getI(swingEventBiasD, 0)
+    se1Lvl  = getF(swingEventLevelD, 0)
+    se1Org  = getI(swingEventOriginTimeD, 0)
+    se1Brk  = getI(swingEventBreakTimeD, 0)
+    se2Tag  = getS(swingEventTagD, 1)
+    se2Bias = getI(swingEventBiasD, 1)
+    se2Lvl  = getF(swingEventLevelD, 1)
+    se2Org  = getI(swingEventOriginTimeD, 1)
+    se2Brk  = getI(swingEventBreakTimeD, 1)
+    se3Tag  = getS(swingEventTagD, 2)
+    se3Bias = getI(swingEventBiasD, 2)
+    se3Lvl  = getF(swingEventLevelD, 2)
+    se3Org  = getI(swingEventOriginTimeD, 2)
+    se3Brk  = getI(swingEventBreakTimeD, 2)
+    se4Tag  = getS(swingEventTagD, 3)
+    se4Bias = getI(swingEventBiasD, 3)
+    se4Lvl  = getF(swingEventLevelD, 3)
+    se4Org  = getI(swingEventOriginTimeD, 3)
+    se4Brk  = getI(swingEventBreakTimeD, 3)
+    se5Tag  = getS(swingEventTagD, 4)
+    se5Bias = getI(swingEventBiasD, 4)
+    se5Lvl  = getF(swingEventLevelD, 4)
+    se5Org  = getI(swingEventOriginTimeD, 4)
+    se5Brk  = getI(swingEventBreakTimeD, 4)
+    se6Tag  = getS(swingEventTagD, 5)
+    se6Bias = getI(swingEventBiasD, 5)
+    se6Lvl  = getF(swingEventLevelD, 5)
+    se6Org  = getI(swingEventOriginTimeD, 5)
+    se6Brk  = getI(swingEventBreakTimeD, 5)
+    se7Tag  = getS(swingEventTagD, 6)
+    se7Bias = getI(swingEventBiasD, 6)
+    se7Lvl  = getF(swingEventLevelD, 6)
+    se7Org  = getI(swingEventOriginTimeD, 6)
+    se7Brk  = getI(swingEventBreakTimeD, 6)
+    se8Tag  = getS(swingEventTagD, 7)
+    se8Bias = getI(swingEventBiasD, 7)
+    se8Lvl  = getF(swingEventLevelD, 7)
+    se8Org  = getI(swingEventOriginTimeD, 7)
+    se8Brk  = getI(swingEventBreakTimeD, 7)
+    se9Tag  = getS(swingEventTagD, 8)
+    se9Bias = getI(swingEventBiasD, 8)
+    se9Lvl  = getF(swingEventLevelD, 8)
+    se9Org  = getI(swingEventOriginTimeD, 8)
+    se9Brk  = getI(swingEventBreakTimeD, 8)
+    se10Tag  = getS(swingEventTagD, 9)
+    se10Bias = getI(swingEventBiasD, 9)
+    se10Lvl  = getF(swingEventLevelD, 9)
+    se10Org  = getI(swingEventOriginTimeD, 9)
+    se10Brk  = getI(swingEventBreakTimeD, 9)
+
+    // ---- Puntos swing HH/HL/LH/LL: 10 slots completos ----
+    sp1Tag  = getS(swingPointTagD, 0)
+    sp1Lvl  = getF(swingPointLevelD, 0)
+    sp1Tm   = getI(swingPointTimeD, 0)
+    sp2Tag  = getS(swingPointTagD, 1)
+    sp2Lvl  = getF(swingPointLevelD, 1)
+    sp2Tm   = getI(swingPointTimeD, 1)
+    sp3Tag  = getS(swingPointTagD, 2)
+    sp3Lvl  = getF(swingPointLevelD, 2)
+    sp3Tm   = getI(swingPointTimeD, 2)
+    sp4Tag  = getS(swingPointTagD, 3)
+    sp4Lvl  = getF(swingPointLevelD, 3)
+    sp4Tm   = getI(swingPointTimeD, 3)
+    sp5Tag  = getS(swingPointTagD, 4)
+    sp5Lvl  = getF(swingPointLevelD, 4)
+    sp5Tm   = getI(swingPointTimeD, 4)
+    sp6Tag  = getS(swingPointTagD, 5)
+    sp6Lvl  = getF(swingPointLevelD, 5)
+    sp6Tm   = getI(swingPointTimeD, 5)
+    sp7Tag  = getS(swingPointTagD, 6)
+    sp7Lvl  = getF(swingPointLevelD, 6)
+    sp7Tm   = getI(swingPointTimeD, 6)
+    sp8Tag  = getS(swingPointTagD, 7)
+    sp8Lvl  = getF(swingPointLevelD, 7)
+    sp8Tm   = getI(swingPointTimeD, 7)
+    sp9Tag  = getS(swingPointTagD, 8)
+    sp9Lvl  = getF(swingPointLevelD, 8)
+    sp9Tm   = getI(swingPointTimeD, 8)
+    sp10Tag  = getS(swingPointTagD, 9)
+    sp10Lvl  = getF(swingPointLevelD, 9)
+    sp10Tm   = getI(swingPointTimeD, 9)
+
+    [internalTrendD,
+     eql1, eql2, eql3, eql4, eql5, eqlT1, eqlT2, eqlT3, eqlT4, eqlT5,
+     ob1Top, ob1Bot, ob1T, ob1B, ob2Top, ob2Bot, ob2T, ob2B, ob3Top, ob3Bot, ob3T, ob3B,
+     ob4Top, ob4Bot, ob4T, ob4B, ob5Top, ob5Bot, ob5T, ob5B,
+     eql6, eql7, eql8, eql9, eql10, eql11, eql12, eql13, eql14, eql15, eql16, eql17, eql18, eql19, eql20,
+     eqlT6, eqlT7, eqlT8, eqlT9, eqlT10, eqlT11, eqlT12, eqlT13, eqlT14, eqlT15, eqlT16, eqlT17, eqlT18, eqlT19, eqlT20,
+     eqlOrgT1, eqlOrgT2, eqlOrgT3, eqlOrgT4, eqlOrgT5, eqlOrgT6, eqlOrgT7, eqlOrgT8, eqlOrgT9, eqlOrgT10, eqlOrgT11, eqlOrgT12, eqlOrgT13, eqlOrgT14, eqlOrgT15, eqlOrgT16, eqlOrgT17, eqlOrgT18, eqlOrgT19, eqlOrgT20,
+     eqh1, eqh2, eqh3, eqh4, eqh5, eqh6, eqh7, eqh8, eqh9, eqh10, eqh11, eqh12, eqh13, eqh14, eqh15, eqh16, eqh17, eqh18, eqh19, eqh20,
+     eqhT1, eqhT2, eqhT3, eqhT4, eqhT5, eqhT6, eqhT7, eqhT8, eqhT9, eqhT10, eqhT11, eqhT12, eqhT13, eqhT14, eqhT15, eqhT16, eqhT17, eqhT18, eqhT19, eqhT20,
+     eqhOrgT1, eqhOrgT2, eqhOrgT3, eqhOrgT4, eqhOrgT5, eqhOrgT6, eqhOrgT7, eqhOrgT8, eqhOrgT9, eqhOrgT10, eqhOrgT11, eqhOrgT12, eqhOrgT13, eqhOrgT14, eqhOrgT15, eqhOrgT16, eqhOrgT17, eqhOrgT18, eqhOrgT19, eqhOrgT20,
+     iob1Top, iob1Bot, iob1T, iob1B, iob2Top, iob2Bot, iob2T, iob2B, iob3Top, iob3Bot, iob3T, iob3B, iob4Top, iob4Bot, iob4T, iob4B, iob5Top, iob5Bot, iob5T, iob5B,
+     iob6Top, iob6Bot, iob6T, iob6B, iob7Top, iob7Bot, iob7T, iob7B, iob8Top, iob8Bot, iob8T, iob8B, iob9Top, iob9Bot, iob9T, iob9B, iob10Top, iob10Bot, iob10T, iob10B,
+     iob11Top, iob11Bot, iob11T, iob11B, iob12Top, iob12Bot, iob12T, iob12B, iob13Top, iob13Bot, iob13T, iob13B, iob14Top, iob14Bot, iob14T, iob14B, iob15Top, iob15Bot, iob15T, iob15B,
+     iob16Top, iob16Bot, iob16T, iob16B, iob17Top, iob17Bot, iob17T, iob17B, iob18Top, iob18Bot, iob18T, iob18B, iob19Top, iob19Bot, iob19T, iob19B, iob20Top, iob20Bot, iob20T, iob20B,
+     sob1Top, sob1Bot, sob1T, sob1B, sob2Top, sob2Bot, sob2T, sob2B, sob3Top, sob3Bot, sob3T, sob3B, sob4Top, sob4Bot, sob4T, sob4B, sob5Top, sob5Bot, sob5T, sob5B,
+     sob6Top, sob6Bot, sob6T, sob6B, sob7Top, sob7Bot, sob7T, sob7B, sob8Top, sob8Bot, sob8T, sob8B, sob9Top, sob9Bot, sob9T, sob9B, sob10Top, sob10Bot, sob10T, sob10B,
+     sob11Top, sob11Bot, sob11T, sob11B, sob12Top, sob12Bot, sob12T, sob12B, sob13Top, sob13Bot, sob13T, sob13B, sob14Top, sob14Bot, sob14T, sob14B, sob15Top, sob15Bot, sob15T, sob15B,
+     sob16Top, sob16Bot, sob16T, sob16B, sob17Top, sob17Bot, sob17T, sob17B, sob18Top, sob18Bot, sob18T, sob18B, sob19Top, sob19Bot, sob19T, sob19B, sob20Top, sob20Bot, sob20T, sob20B,
+     ie1Tag, ie1Bias, ie1Lvl, ie1Org, ie1Brk, ie2Tag, ie2Bias, ie2Lvl, ie2Org, ie2Brk, ie3Tag, ie3Bias, ie3Lvl, ie3Org, ie3Brk, ie4Tag, ie4Bias, ie4Lvl, ie4Org, ie4Brk, ie5Tag, ie5Bias, ie5Lvl, ie5Org, ie5Brk,
+     ie6Tag, ie6Bias, ie6Lvl, ie6Org, ie6Brk, ie7Tag, ie7Bias, ie7Lvl, ie7Org, ie7Brk, ie8Tag, ie8Bias, ie8Lvl, ie8Org, ie8Brk, ie9Tag, ie9Bias, ie9Lvl, ie9Org, ie9Brk, ie10Tag, ie10Bias, ie10Lvl, ie10Org, ie10Brk,
+     se1Tag, se1Bias, se1Lvl, se1Org, se1Brk, se2Tag, se2Bias, se2Lvl, se2Org, se2Brk, se3Tag, se3Bias, se3Lvl, se3Org, se3Brk, se4Tag, se4Bias, se4Lvl, se4Org, se4Brk, se5Tag, se5Bias, se5Lvl, se5Org, se5Brk,
+     se6Tag, se6Bias, se6Lvl, se6Org, se6Brk, se7Tag, se7Bias, se7Lvl, se7Org, se7Brk, se8Tag, se8Bias, se8Lvl, se8Org, se8Brk, se9Tag, se9Bias, se9Lvl, se9Org, se9Brk, se10Tag, se10Bias, se10Lvl, se10Org, se10Brk,
+     sp1Tag, sp1Lvl, sp1Tm, sp2Tag, sp2Lvl, sp2Tm, sp3Tag, sp3Lvl, sp3Tm, sp4Tag, sp4Lvl, sp4Tm, sp5Tag, sp5Lvl, sp5Tm, sp6Tag, sp6Lvl, sp6Tm, sp7Tag, sp7Lvl, sp7Tm, sp8Tag, sp8Lvl, sp8Tm, sp9Tag, sp9Lvl, sp9Tm, sp10Tag, sp10Lvl, sp10Tm]
+
+// =====================================================================================
+// CONSUMO 4H — usa los valores de dailyEngine() (vía request.security más abajo) para
+// replicar exist_equals()/exist_orderblock()/calc_strategy_score() de strategy.py.
+// =====================================================================================
+
+// @function            puerto de exist_equals(): se detiene en el PRIMER Equal Low que
+//                       el low del tick actual rompe, sea sweep válido (close recupera
+//                       el nivel) o falso quiebre (close se queda por debajo) — no sigue
+//                       revisando los siguientes niveles aunque el primero ya decida.
+//                       También devuelve el timestamp diario de ese nivel, para poder
+//                       dibujarlo anclado a su origen real (no solo cerca de la barra
+//                       4H actual).
+// @returns             [precio del Equal Low barrido (o na), su timestamp diario]
+existEquals4h(float e1, float e2, float e3, float e4, float e5, int t1, int t2, int t3, int t4, int t5) =>
+    float result     = na
+    int   resultTime = na
+    bool  decided    = false
+    if not decided and not na(e1) and low < e1
+        result     := close > e1 ? e1 : na
+        resultTime := close > e1 ? t1 : na
+        decided    := true
+    if not decided and not na(e2) and low < e2
+        result     := close > e2 ? e2 : na
+        resultTime := close > e2 ? t2 : na
+        decided    := true
+    if not decided and not na(e3) and low < e3
+        result     := close > e3 ? e3 : na
+        resultTime := close > e3 ? t3 : na
+        decided    := true
+    if not decided and not na(e4) and low < e4
+        result     := close > e4 ? e4 : na
+        resultTime := close > e4 ? t4 : na
+        decided    := true
+    if not decided and not na(e5) and low < e5
+        result     := close > e5 ? e5 : na
+        resultTime := close > e5 ? t5 : na
+        decided    := true
+    [result, resultTime]
+
+// @function            puerto de exist_orderblock(): los slots vienen pre-ordenados por
+//                       top descendente desde dailyEngine(), así que el primero que
+//                       matchea (top < equalPrice) ya es el máximo.
+// @returns             [obTop, obBot, obTime, obBias]
+existOrderblock4h(float equalPrice, float t1, float b1, int tm1, int bi1, float t2, float b2, int tm2, int bi2, float t3, float b3, int tm3, int bi3, float t4, float b4, int tm4, int bi4, float t5, float b5, int tm5, int bi5) =>
+    float bestTop  = na
+    float bestBot  = na
+    int   bestTime = na
+    int   bestBias = na
+    if not na(equalPrice)
+        if not na(t1) and t1 < equalPrice
+            bestTop := t1
+            bestBot := b1
+            bestTime := tm1
+            bestBias := bi1
+        else if not na(t2) and t2 < equalPrice
+            bestTop := t2
+            bestBot := b2
+            bestTime := tm2
+            bestBias := bi2
+        else if not na(t3) and t3 < equalPrice
+            bestTop := t3
+            bestBot := b3
+            bestTime := tm3
+            bestBias := bi3
+        else if not na(t4) and t4 < equalPrice
+            bestTop := t4
+            bestBot := b4
+            bestTime := tm4
+            bestBias := bi4
+        else if not na(t5) and t5 < equalPrice
+            bestTop := t5
+            bestBot := b5
+            bestTime := tm5
+            bestBias := bi5
+    [bestTop, bestBot, bestTime, bestBias]
+
+// @function            divergencia alcista del estocástico — puerto de
+//                       stochastic_oscillator_have_divergence() en strategy.py, con
+//                       ventana fija (ver stochasticDivLenInput, aproximación
+//                       documentada en docs/plans/bugs.md).
+// @returns             bool
+stochDivergence(float slowK, int divLen) =>
+    mid     = divLen / 2
+    priceL1 = ta.lowest(close, mid)
+    priceL2 = ta.lowest(close[mid], mid)
+    kL1     = ta.lowest(slowK, mid)
+    kL2     = ta.lowest(slowK[mid], mid)
+    priceL1 < priceL2 and kL1 > kL2
+
+// @function            score ponderado — pesos confirmados contra strategy.py (ver
+//                       docs/plans/bugs.md): Equal Lows +35, Order Block +25,
+//                       Divergencia +20, Sobreventa +15, BB50 +15, tendencia +10.
+//                       Simplificado LONG-only: se gatea con trendBias == 1 en el
+//                       bloque de la señal, no se replica la rama BEARISH de Python
+//                       (esa solo alimenta señales SHORT, fuera de alcance).
+// @returns             int
+calcScore4h(float equalPrice, bool obValid, bool divergence, bool oversold, bool bbTouch, int trendBias) =>
+    hasEqual = not na(equalPrice)
+    score = 0
+    score := hasEqual    ? score + 35 : score
+    score := obValid     ? score + 25 : score
+    score := divergence  ? score + 20 : score
+    score := oversold    ? score + 15 : score
+    score := bbTouch     ? score + 15 : score
+    score := trendBias == 1 ? score + 10 : score
+    score
+
+// @function            update trailing swing points
+// @returns             int
+updateTrailingExtremes() =>
+    trailing.top            := math.max(high,trailing.top)
+    trailing.lastTopTime    := trailing.top == high ? time : trailing.lastTopTime
+    trailing.bottom         := math.min(low,trailing.bottom)
+    trailing.lastBottomTime := trailing.bottom == low ? time : trailing.lastBottomTime
+
+// @function            draw trailing swing points
+// @returns             void
+drawHighLowSwings() =>
+    var line topLine        = line.new(na, na, na, na, color = swingBearishColor, xloc = xloc.bar_time)
+    var line bottomLine     = line.new(na, na, na, na, color = swingBullishColor, xloc = xloc.bar_time)
+    var label topLabel      = label.new(na, na, color=color(na), textcolor = swingBearishColor, xloc = xloc.bar_time, style = label.style_label_down, size = size.tiny)
+    var label bottomLabel   = label.new(na, na, color=color(na), textcolor = swingBullishColor, xloc = xloc.bar_time, style = label.style_label_up, size = size.tiny)
+
+    rightTimeBar            = last_bar_time + 20 * (time - time[1])
+
+    topLine.set_first_point(    chart.point.new(trailing.lastTopTime, na, trailing.top))
+    topLine.set_second_point(   chart.point.new(rightTimeBar, na, trailing.top))
+    topLabel.set_point(         chart.point.new(rightTimeBar, na, trailing.top))
+    topLabel.set_text(          swingTrend.bias == BEARISH ? 'Strong High' : 'Weak High')
+
+    bottomLine.set_first_point( chart.point.new(trailing.lastBottomTime, na, trailing.bottom))
+    bottomLine.set_second_point(chart.point.new(rightTimeBar, na, trailing.bottom))
+    bottomLabel.set_point(      chart.point.new(rightTimeBar, na, trailing.bottom))
+    bottomLabel.set_text(       swingTrend.bias == BULLISH ? 'Strong Low' : 'Weak Low')
+
+// @function            draw a zone with a label and a box
+// @param labelLevel    price level for label
+// @param labelIndex    bar index for label
+// @param top           top price level for box
+// @param bottom        bottom price level for box
+// @param tag           text to display
+// @param zoneColor     base color
+// @param style         label style
+// @returns             void
+drawZone(float labelLevel, int labelIndex, float top, float bottom, string tag, color zoneColor, string style) =>
+    var label l_abel    = label.new(na,na,text = tag, color=color(na),textcolor = zoneColor, style = style, size = size.small)
+    var box b_ox        = box.new(na,na,na,na,bgcolor = color.new(zoneColor,80),border_color = color(na), xloc = xloc.bar_time)
+
+    b_ox.set_top_left_point(    chart.point.new(trailing.barTime,na,top))
+    b_ox.set_bottom_right_point(chart.point.new(last_bar_time,na,bottom))
+
+    l_abel.set_point(           chart.point.new(na,labelIndex,labelLevel))
+
+// @function            draw premium/discount zones
+// @returns             void
+drawPremiumDiscountZones() =>
+    drawZone(trailing.top, math.round(0.5*(trailing.barIndex + last_bar_index)), trailing.top, 0.95*trailing.top + 0.05*trailing.bottom, 'Premium', premiumZoneColor, label.style_label_down)
+
+    equilibriumLevel = math.avg(trailing.top, trailing.bottom)
+    drawZone(equilibriumLevel, last_bar_index, 0.525*trailing.top + 0.475*trailing.bottom, 0.525*trailing.bottom + 0.475*trailing.top, 'Equilibrium', equilibriumZoneColorInput, label.style_label_left)
+
+    drawZone(trailing.bottom, math.round(0.5*(trailing.barIndex + last_bar_index)), 0.95*trailing.bottom + 0.05*trailing.top, trailing.bottom, 'Discount', discountZoneColor, label.style_label_up)
+
+// =====================================================================================
+// DIBUJO DE LA VISUALIZACIÓN RESTAURADA DESDE dailyEngine() — EQL/EQH, Order Blocks
+// crudos (interno/swing por separado), eventos de estructura BOS/CHoCH, puntos swing
+// HH/HL/LH/LL. Mismo patrón ya probado en el fichero: objetos var creados una vez en
+// barstate.isfirst, repositionados cada barra; un slot con dato na se deja en su última
+// posición (no se "esconde"). Funciones top-level porque reciben arrays por parámetro
+// (mismo motivo que storeObDaily/deleteObDaily — Pine no permite funciones anidadas).
+// Helpers compartidos entre interno/swing donde la forma del dato es idéntica. Ver
+// docs/plans/bugs.md para el detalle de diseño.
+// =====================================================================================
+
+// @function            reposiciona un cupo de cajas de Order Block crudas (sin fusionar)
+//                       — usado tanto para internas como para swing.
+// @returns             void
+drawObBoxSetD(array<box> boxes, array<float> tops, array<float> bots, array<int> times, array<int> biases, color bullColor, color bearColor) =>
+    // min(boxes,tops): si internalOrderBlocksSizeInput/swingOrderBlocksSizeInput se
+    // configura por encima del cupo del motor diario (5), boxes tendría más elementos
+    // que tops — sin este clamp, array.get(tops, i) rompería fuera de rango.
+    n = math.min(array.size(boxes), array.size(tops))
+    if n > 0
+        for i = 0 to n - 1
+            t = array.get(tops, i)
+            if not na(t)
+                bx = array.get(boxes, i)
+                b  = array.get(bots, i)
+                tm = array.get(times, i)
+                bi = array.get(biases, i)
+                obColor = bi == BEARISH ? bearColor : bullColor
+                bx.set_top_left_point(chart.point.new(tm, na, t))
+                bx.set_bottom_right_point(chart.point.new(last_bar_time, na, b))
+                bx.set_border_color(obColor)
+                bx.set_bgcolor(obColor)
+
+// @function            reposiciona un cupo de líneas+labels de Equal Highs/Lows — usado
+//                       tanto para EQL como para EQH. Segmento FIJO entre el pivot de
+//                       ORIGEN y el de confirmación (igual que drawEqualHighLow() nativo:
+//                       línea de p_ivot.barTime a time[size], label centrado a la mitad) —
+//                       NO un punto único con extend.right como en el primer intento
+//                       (causa raíz del bug "solo aparece el elemento"/texto corrido, ver
+//                       docs/plans/bugs.md). El centrado usa tiempo medio (xloc.bar_time),
+//                       no bar_index medio como el nativo, porque acá el dato es diario y
+//                       el chart puede estar en otro timeframe (4H, etc.).
+// @returns             void
+drawLevelSetD(array<line> lines, array<label> labels, array<float> prices, array<int> origins, array<int> times, string tag, color lvlColor, string labelSize) =>
+    n = array.size(lines)
+    if n > 0
+        for i = 0 to n - 1
+            p = array.get(prices, i)
+            if not na(p)
+                org = array.get(origins, i)
+                tm  = array.get(times, i)
+                ln  = array.get(lines, i)
+                lb  = array.get(labels, i)
+                // Pine: "/" siempre devuelve float aunque ambos operandos sean int —
+                // chart.point.new exige "int" para el tiempo, de ahí el cast explícito
+                // (sin él, "series float was used but series int expected").
+                midTime = int(org + math.round((tm - org) / 2))
+                ln.set_first_point(chart.point.new(org, na, p))
+                ln.set_second_point(chart.point.new(tm, na, p))
+                ln.set_color(lvlColor)
+                lb.set_point(chart.point.new(midTime, na, p))
+                lb.set_text(tag)
+                lb.set_textcolor(lvlColor)
+                lb.set_size(labelSize)
+
+// @function            reposiciona un cupo de eventos de estructura BOS/CHoCH — línea
+//                       FIJA (sin extend, a diferencia de EQL/EQH) desde el origen del
+//                       pivot roto hasta el momento del quiebre, igual que drawStructure()
+//                       nativo. Respeta el filtro ALL/BOS/CHOCH (showInternalBullInput/
+//                       showInternalBearInput o sus equivalentes swing) — un evento que no
+//                       matchea el filtro se oculta (línea transparente, label vacío).
+// @returns             void
+drawStructEventSetD(array<line> lines, array<label> labels, array<string> tags, array<int> biases, array<float> levels, array<int> origins, array<int> breaks, string bullFilterInput, string bearFilterInput, color bullColor, color bearColor, string labelSize) =>
+    n = array.size(lines)
+    if n > 0
+        for i = 0 to n - 1
+            lvl = array.get(levels, i)
+            if not na(lvl)
+                tag  = array.get(tags, i)
+                bias = array.get(biases, i)
+                org  = array.get(origins, i)
+                brk  = array.get(breaks, i)
+                ln   = array.get(lines, i)
+                lb   = array.get(labels, i)
+                filterInput = bias == BULLISH ? bullFilterInput : bearFilterInput
+                visible = filterInput == ALL or (filterInput == BOS and tag != CHOCH) or (filterInput == CHOCH and tag == CHOCH)
+                eventColor = bias == BULLISH ? bullColor : bearColor
+                if visible
+                    // Label centrado en el tiempo medio entre origen y quiebre — igual
+                    // que drawStructure() nativo (math.round(0.5*(p_ivot.barIndex+bar_index))),
+                    // adaptado a tiempo real en vez de bar_index (ver docs/plans/bugs.md).
+                    // Mismo cast explícito que en drawLevelSetD — "/" da float aunque
+                    // brk/org sean int, y chart.point.new exige int para el tiempo.
+                    midTime = int(org + math.round((brk - org) / 2))
+                    ln.set_first_point(chart.point.new(org, na, lvl))
+                    ln.set_second_point(chart.point.new(brk, na, lvl))
+                    ln.set_color(eventColor)
+                    lb.set_point(chart.point.new(midTime, na, lvl))
+                    lb.set_text(tag)
+                    lb.set_textcolor(eventColor)
+                    lb.set_style(bias == BULLISH ? label.style_label_down : label.style_label_up)
+                    lb.set_size(labelSize)
+                else
+                    ln.set_color(color(na))
+                    lb.set_text('')
+
+// @function            reposiciona un cupo de labels de puntos swing HH/HL/LH/LL — solo
+//                       aplica a la estructura SWING (50 velas), igual que el nativo.
+// @returns             void
+drawSwingPointSetD(array<label> labels, array<string> tags, array<float> levels, array<int> times, color bullColor, color bearColor, string labelSize) =>
+    n = array.size(labels)
+    if n > 0
+        for i = 0 to n - 1
+            lvl = array.get(levels, i)
+            if not na(lvl)
+                tag = array.get(tags, i)
+                tm  = array.get(times, i)
+                lb  = array.get(labels, i)
+                isLow = tag == 'LL' or tag == 'HL'
+                pointColor = isLow ? bullColor : bearColor
+                lb.set_point(chart.point.new(tm, na, lvl))
+                lb.set_text(tag)
+                lb.set_textcolor(pointColor)
+                lb.set_style(isLow ? label.style_label_up : label.style_label_down)
+                lb.set_size(labelSize)
+
+//---------------------------------------------------------------------------------------------------------------------}
+//MUTABLE VARIABLES & EXECUTION
+//---------------------------------------------------------------------------------------------------------------------{
+parsedOpen  = showTrendInput ? open : na
+candleColor = internalTrend.bias == BULLISH ? swingBullishColor : swingBearishColor
+plotcandle(parsedOpen,high,low,close,color = candleColor, wickcolor = candleColor, bordercolor = candleColor)
+
+if showHighLowSwingsInput or showPremiumDiscountZonesInput
+    updateTrailingExtremes()
+
+    if showHighLowSwingsInput
+        drawHighLowSwings()
+
+    if showPremiumDiscountZonesInput
+        drawPremiumDiscountZones()
+
+if showFairValueGapsInput
+    deleteFairValueGaps()
+
+// Estructura (swing/internal/equal pivots, BOS/CHoCH, Order Blocks) YA NO se calcula
+// ni se dibuja en el timeframe del chart — se reemplazó por dailyEngine() vía
+// request.security("D", ...) más abajo, que es ahora la única fuente de verdad (mismo
+// valor/forma sin importar el timeframe del chart, ver docs/plans/pine-strategy-
+// rearchitecture.md y el plan de esta sesión). internalTrend/swingTrend/swingHigh/Low/
+// internalHigh/Low/los arrays de Order Blocks nativos quedan sin usar a propósito —
+// no se borraron sus declaraciones para no tocar más de lo necesario, pero ya no se
+// alimentan (candleColor arriba, que lee internalTrend.bias, queda "congelado" en su
+// último valor — aceptado, no es parte del alcance de este cambio).
+
+// dTrend: 1 = alcista, -1 = bajista, 0 = sin tendencia interna confirmada todavía
+// (igual semántica que context.trend is None en Python — sin tendencia, no se opera).
+[dTrend,
+ eql1, eql2, eql3, eql4, eql5, eqlT1, eqlT2, eqlT3, eqlT4, eqlT5,
+ ob1Top, ob1Bot, ob1T, ob1B, ob2Top, ob2Bot, ob2T, ob2B, ob3Top, ob3Bot, ob3T, ob3B,
+ ob4Top, ob4Bot, ob4T, ob4B, ob5Top, ob5Bot, ob5T, ob5B,
+ eql6, eql7, eql8, eql9, eql10, eql11, eql12, eql13, eql14, eql15, eql16, eql17, eql18, eql19, eql20,
+ eqlT6, eqlT7, eqlT8, eqlT9, eqlT10, eqlT11, eqlT12, eqlT13, eqlT14, eqlT15, eqlT16, eqlT17, eqlT18, eqlT19, eqlT20,
+ eqlOrgT1, eqlOrgT2, eqlOrgT3, eqlOrgT4, eqlOrgT5, eqlOrgT6, eqlOrgT7, eqlOrgT8, eqlOrgT9, eqlOrgT10, eqlOrgT11, eqlOrgT12, eqlOrgT13, eqlOrgT14, eqlOrgT15, eqlOrgT16, eqlOrgT17, eqlOrgT18, eqlOrgT19, eqlOrgT20,
+ eqh1, eqh2, eqh3, eqh4, eqh5, eqh6, eqh7, eqh8, eqh9, eqh10, eqh11, eqh12, eqh13, eqh14, eqh15, eqh16, eqh17, eqh18, eqh19, eqh20,
+ eqhT1, eqhT2, eqhT3, eqhT4, eqhT5, eqhT6, eqhT7, eqhT8, eqhT9, eqhT10, eqhT11, eqhT12, eqhT13, eqhT14, eqhT15, eqhT16, eqhT17, eqhT18, eqhT19, eqhT20,
+ eqhOrgT1, eqhOrgT2, eqhOrgT3, eqhOrgT4, eqhOrgT5, eqhOrgT6, eqhOrgT7, eqhOrgT8, eqhOrgT9, eqhOrgT10, eqhOrgT11, eqhOrgT12, eqhOrgT13, eqhOrgT14, eqhOrgT15, eqhOrgT16, eqhOrgT17, eqhOrgT18, eqhOrgT19, eqhOrgT20,
+ iob1Top, iob1Bot, iob1T, iob1B, iob2Top, iob2Bot, iob2T, iob2B, iob3Top, iob3Bot, iob3T, iob3B, iob4Top, iob4Bot, iob4T, iob4B, iob5Top, iob5Bot, iob5T, iob5B,
+ iob6Top, iob6Bot, iob6T, iob6B, iob7Top, iob7Bot, iob7T, iob7B, iob8Top, iob8Bot, iob8T, iob8B, iob9Top, iob9Bot, iob9T, iob9B, iob10Top, iob10Bot, iob10T, iob10B,
+ iob11Top, iob11Bot, iob11T, iob11B, iob12Top, iob12Bot, iob12T, iob12B, iob13Top, iob13Bot, iob13T, iob13B, iob14Top, iob14Bot, iob14T, iob14B, iob15Top, iob15Bot, iob15T, iob15B,
+ iob16Top, iob16Bot, iob16T, iob16B, iob17Top, iob17Bot, iob17T, iob17B, iob18Top, iob18Bot, iob18T, iob18B, iob19Top, iob19Bot, iob19T, iob19B, iob20Top, iob20Bot, iob20T, iob20B,
+ sob1Top, sob1Bot, sob1T, sob1B, sob2Top, sob2Bot, sob2T, sob2B, sob3Top, sob3Bot, sob3T, sob3B, sob4Top, sob4Bot, sob4T, sob4B, sob5Top, sob5Bot, sob5T, sob5B,
+ sob6Top, sob6Bot, sob6T, sob6B, sob7Top, sob7Bot, sob7T, sob7B, sob8Top, sob8Bot, sob8T, sob8B, sob9Top, sob9Bot, sob9T, sob9B, sob10Top, sob10Bot, sob10T, sob10B,
+ sob11Top, sob11Bot, sob11T, sob11B, sob12Top, sob12Bot, sob12T, sob12B, sob13Top, sob13Bot, sob13T, sob13B, sob14Top, sob14Bot, sob14T, sob14B, sob15Top, sob15Bot, sob15T, sob15B,
+ sob16Top, sob16Bot, sob16T, sob16B, sob17Top, sob17Bot, sob17T, sob17B, sob18Top, sob18Bot, sob18T, sob18B, sob19Top, sob19Bot, sob19T, sob19B, sob20Top, sob20Bot, sob20T, sob20B,
+ ie1Tag, ie1Bias, ie1Lvl, ie1Org, ie1Brk, ie2Tag, ie2Bias, ie2Lvl, ie2Org, ie2Brk, ie3Tag, ie3Bias, ie3Lvl, ie3Org, ie3Brk, ie4Tag, ie4Bias, ie4Lvl, ie4Org, ie4Brk, ie5Tag, ie5Bias, ie5Lvl, ie5Org, ie5Brk,
+ ie6Tag, ie6Bias, ie6Lvl, ie6Org, ie6Brk, ie7Tag, ie7Bias, ie7Lvl, ie7Org, ie7Brk, ie8Tag, ie8Bias, ie8Lvl, ie8Org, ie8Brk, ie9Tag, ie9Bias, ie9Lvl, ie9Org, ie9Brk, ie10Tag, ie10Bias, ie10Lvl, ie10Org, ie10Brk,
+ se1Tag, se1Bias, se1Lvl, se1Org, se1Brk, se2Tag, se2Bias, se2Lvl, se2Org, se2Brk, se3Tag, se3Bias, se3Lvl, se3Org, se3Brk, se4Tag, se4Bias, se4Lvl, se4Org, se4Brk, se5Tag, se5Bias, se5Lvl, se5Org, se5Brk,
+ se6Tag, se6Bias, se6Lvl, se6Org, se6Brk, se7Tag, se7Bias, se7Lvl, se7Org, se7Brk, se8Tag, se8Bias, se8Lvl, se8Org, se8Brk, se9Tag, se9Bias, se9Lvl, se9Org, se9Brk, se10Tag, se10Bias, se10Lvl, se10Org, se10Brk,
+ sp1Tag, sp1Lvl, sp1Tm, sp2Tag, sp2Lvl, sp2Tm, sp3Tag, sp3Lvl, sp3Tm, sp4Tag, sp4Lvl, sp4Tm, sp5Tag, sp5Lvl, sp5Tm, sp6Tag, sp6Lvl, sp6Tm, sp7Tag, sp7Lvl, sp7Tm, sp8Tag, sp8Lvl, sp8Tm, sp9Tag, sp9Lvl, sp9Tm, sp10Tag, sp10Lvl, sp10Tm] = request.security(syminfo.tickerid, "D", dailyEngine(), lookahead = barmerge.lookahead_off)
+
+if showFairValueGapsInput
+    drawFairValueGaps()
+
+// Order Blocks internos/swing — antes llamaban a drawOrderBlocks(internal), que lee de
+// los arrays orderBlock NATIVOS (internalOrderBlocks/swingOrderBlocks), nunca poblados
+// desde que se desactivó el motor nativo (no-op silencioso). Ahora reposicionan las
+// MISMAS cajas (internalOrderBlocksBoxes/swingOrderBlocksBoxes, creadas arriba en
+// barstate.isfirst) con los datos CRUDOS de dailyEngine() (iob1..5/sob1..5) — ver
+// docs/plans/bugs.md. Cada barra, no solo al final del histórico (igual que el resto
+// de la visualización diaria ya restaurada).
+if showInternalOrderBlocksInput
+    drawObBoxSetD(internalOrderBlocksBoxes, array.from(iob1Top,iob2Top,iob3Top,iob4Top,iob5Top,iob6Top,iob7Top,iob8Top,iob9Top,iob10Top,iob11Top,iob12Top,iob13Top,iob14Top,iob15Top,iob16Top,iob17Top,iob18Top,iob19Top,iob20Top), array.from(iob1Bot,iob2Bot,iob3Bot,iob4Bot,iob5Bot,iob6Bot,iob7Bot,iob8Bot,iob9Bot,iob10Bot,iob11Bot,iob12Bot,iob13Bot,iob14Bot,iob15Bot,iob16Bot,iob17Bot,iob18Bot,iob19Bot,iob20Bot), array.from(iob1T,iob2T,iob3T,iob4T,iob5T,iob6T,iob7T,iob8T,iob9T,iob10T,iob11T,iob12T,iob13T,iob14T,iob15T,iob16T,iob17T,iob18T,iob19T,iob20T), array.from(iob1B,iob2B,iob3B,iob4B,iob5B,iob6B,iob7B,iob8B,iob9B,iob10B,iob11B,iob12B,iob13B,iob14B,iob15B,iob16B,iob17B,iob18B,iob19B,iob20B), internalBullishOrderBlockColor, internalBearishOrderBlockColor)
+
+if showSwingOrderBlocksInput
+    drawObBoxSetD(swingOrderBlocksBoxes, array.from(sob1Top,sob2Top,sob3Top,sob4Top,sob5Top,sob6Top,sob7Top,sob8Top,sob9Top,sob10Top,sob11Top,sob12Top,sob13Top,sob14Top,sob15Top,sob16Top,sob17Top,sob18Top,sob19Top,sob20Top), array.from(sob1Bot,sob2Bot,sob3Bot,sob4Bot,sob5Bot,sob6Bot,sob7Bot,sob8Bot,sob9Bot,sob10Bot,sob11Bot,sob12Bot,sob13Bot,sob14Bot,sob15Bot,sob16Bot,sob17Bot,sob18Bot,sob19Bot,sob20Bot), array.from(sob1T,sob2T,sob3T,sob4T,sob5T,sob6T,sob7T,sob8T,sob9T,sob10T,sob11T,sob12T,sob13T,sob14T,sob15T,sob16T,sob17T,sob18T,sob19T,sob20T), array.from(sob1B,sob2B,sob3B,sob4B,sob5B,sob6B,sob7B,sob8B,sob9B,sob10B,sob11B,sob12B,sob13B,sob14B,sob15B,sob16B,sob17B,sob18B,sob19B,sob20B), swingBullishOrderBlockColor, swingBearishOrderBlockColor)
+
+// Equal Lows/Highs — línea punteada extendida a la derecha + label 'EQL'/'EQH'.
+if showEqualHighsLowsInput
+    drawLevelSetD(eqlLinesD, eqlLabelsD, array.from(eql1,eql2,eql3,eql4,eql5,eql6,eql7,eql8,eql9,eql10,eql11,eql12,eql13,eql14,eql15,eql16,eql17,eql18,eql19,eql20), array.from(eqlOrgT1,eqlOrgT2,eqlOrgT3,eqlOrgT4,eqlOrgT5,eqlOrgT6,eqlOrgT7,eqlOrgT8,eqlOrgT9,eqlOrgT10,eqlOrgT11,eqlOrgT12,eqlOrgT13,eqlOrgT14,eqlOrgT15,eqlOrgT16,eqlOrgT17,eqlOrgT18,eqlOrgT19,eqlOrgT20), array.from(eqlT1,eqlT2,eqlT3,eqlT4,eqlT5,eqlT6,eqlT7,eqlT8,eqlT9,eqlT10,eqlT11,eqlT12,eqlT13,eqlT14,eqlT15,eqlT16,eqlT17,eqlT18,eqlT19,eqlT20), 'EQL', swingBullishColor, equalHighsLowsSizeInput)
+    drawLevelSetD(eqhLinesD, eqhLabelsD, array.from(eqh1,eqh2,eqh3,eqh4,eqh5,eqh6,eqh7,eqh8,eqh9,eqh10,eqh11,eqh12,eqh13,eqh14,eqh15,eqh16,eqh17,eqh18,eqh19,eqh20), array.from(eqhOrgT1,eqhOrgT2,eqhOrgT3,eqhOrgT4,eqhOrgT5,eqhOrgT6,eqhOrgT7,eqhOrgT8,eqhOrgT9,eqhOrgT10,eqhOrgT11,eqhOrgT12,eqhOrgT13,eqhOrgT14,eqhOrgT15,eqhOrgT16,eqhOrgT17,eqhOrgT18,eqhOrgT19,eqhOrgT20), array.from(eqhT1,eqhT2,eqhT3,eqhT4,eqhT5,eqhT6,eqhT7,eqhT8,eqhT9,eqhT10,eqhT11,eqhT12,eqhT13,eqhT14,eqhT15,eqhT16,eqhT17,eqhT18,eqhT19,eqhT20), 'EQH', swingBearishColor, equalHighsLowsSizeInput)
+
+// Estructura BOS/CHoCH — interna (5 velas) y swing (50 velas), cupo 3 eventos cada una.
+if showInternalsInput
+    drawStructEventSetD(internalStructLinesD, internalStructLabelsD, array.from(ie1Tag,ie2Tag,ie3Tag,ie4Tag,ie5Tag,ie6Tag,ie7Tag,ie8Tag,ie9Tag,ie10Tag), array.from(ie1Bias,ie2Bias,ie3Bias,ie4Bias,ie5Bias,ie6Bias,ie7Bias,ie8Bias,ie9Bias,ie10Bias), array.from(ie1Lvl,ie2Lvl,ie3Lvl,ie4Lvl,ie5Lvl,ie6Lvl,ie7Lvl,ie8Lvl,ie9Lvl,ie10Lvl), array.from(ie1Org,ie2Org,ie3Org,ie4Org,ie5Org,ie6Org,ie7Org,ie8Org,ie9Org,ie10Org), array.from(ie1Brk,ie2Brk,ie3Brk,ie4Brk,ie5Brk,ie6Brk,ie7Brk,ie8Brk,ie9Brk,ie10Brk), showInternalBullInput, showInternalBearInput, internalBullColorInput, internalBearColorInput, internalStructureSize)
+
+if showStructureInput
+    drawStructEventSetD(swingStructLinesD, swingStructLabelsD, array.from(se1Tag,se2Tag,se3Tag,se4Tag,se5Tag,se6Tag,se7Tag,se8Tag,se9Tag,se10Tag), array.from(se1Bias,se2Bias,se3Bias,se4Bias,se5Bias,se6Bias,se7Bias,se8Bias,se9Bias,se10Bias), array.from(se1Lvl,se2Lvl,se3Lvl,se4Lvl,se5Lvl,se6Lvl,se7Lvl,se8Lvl,se9Lvl,se10Lvl), array.from(se1Org,se2Org,se3Org,se4Org,se5Org,se6Org,se7Org,se8Org,se9Org,se10Org), array.from(se1Brk,se2Brk,se3Brk,se4Brk,se5Brk,se6Brk,se7Brk,se8Brk,se9Brk,se10Brk), showSwingBullInput, showSwingBearInput, swingBullColorInput, swingBearColorInput, swingStructureSize)
+
+// Puntos swing HH/HL/LH/LL — solo estructura swing, igual que el nativo.
+if showSwingsInput
+    drawSwingPointSetD(swingPointLabelsD, array.from(sp1Tag,sp2Tag,sp3Tag,sp4Tag,sp5Tag,sp6Tag,sp7Tag,sp8Tag,sp9Tag,sp10Tag), array.from(sp1Lvl,sp2Lvl,sp3Lvl,sp4Lvl,sp5Lvl,sp6Lvl,sp7Lvl,sp8Lvl,sp9Lvl,sp10Lvl), array.from(sp1Tm,sp2Tm,sp3Tm,sp4Tm,sp5Tm,sp6Tm,sp7Tm,sp8Tm,sp9Tm,sp10Tm), swingBullishColor, swingBearishColor, swingStructureSize)
+
+lastBarIndex    := currentBarIndex
+currentBarIndex := bar_index
+newBar          = currentBarIndex != lastBarIndex
+
+if barstate.islastconfirmedhistory or (barstate.isrealtime and newBar)
+    if showDailyLevelsInput and not higherTimeframe('D')
+        drawLevels('D',timeframe.isdaily,dailyLevelsStyleInput,dailyLevelsColorInput)
+
+    if showWeeklyLevelsInput and not higherTimeframe('W')
+        drawLevels('W',timeframe.isweekly,weeklyLevelsStyleInput,weeklyLevelsColorInput)
+
+    if showMonthlyLevelsInput and not higherTimeframe('M')
+        drawLevels('M',timeframe.ismonthly,monthlyLevelsStyleInput,monthlyLevelsColorInput)
+
+// Annual NO usa drawLevels()/request.security('12M', ...) — ver nota junto a
+// annualHigh/annualLow/annualYear más arriba (la barra sintética "12M" no es
+// fiable, queda pegada a un año viejo). Se dibuja con drawAnnualLevel(), llamada
+// SIN el gate de barstate que usa Daily/Weekly/Monthly: ese gate solo se cumple
+// al cargar histórico o con barras nuevas en tiempo real/replay — al detener el
+// Replay deja de cumplirse y la línea quedaba congelada en el último año donde
+// sí se había dibujado. Llamándolo en cada barra, siempre refleja la última
+// barra procesada, esté el chart corriendo, detenido, o en replay.
+if showAnnualLevelsInput
+    drawAnnualLevel(annualLevelsColorInput, annualLevelsStyleInput)
+
+// Stochastic Oscillator — cálculo cada barra (necesario para detectar cruces con
+// ta.crossover/crossunder) y marcadores compatibles con overlay=true: triángulo
+// abajo de la vela al ENTRAR en sobreventa, triángulo arriba al ENTRAR en
+// sobrecompra. slowK/fastD quedan disponibles para cuando la estrategia los use
+// en el score (igual que is_stochastic_oscillator_in_over_sell en strategy.py).
+[stochK, stochD] = stochasticOscillator(stochasticLengthInput, stochasticDLengthInput)
+
+stochEnterOversold   = showStochasticInput and ta.crossunder(stochK, stochasticLowerInput)
+stochEnterOverbought = showStochasticInput and ta.crossover(stochK, stochasticUpperInput)
+
+plotshape(stochEnterOversold   ? low  : na, title = 'Stochastic Oversold',   style = shape.triangleup,   location = location.belowbar, color = stochasticBullColorInput, size = size.tiny)
+plotshape(stochEnterOverbought ? high : na, title = 'Stochastic Overbought', style = shape.triangledown, location = location.abovebar, color = stochasticBearColorInput, size = size.tiny)
+
+// BB50 — mismas bandas en escala de precio, compatibles con overlay=true sin
+// necesitar ningún workaround (a diferencia del Stochastic). plot()/fill() ya
+// manejan na correctamente cuando showBB50Input está apagado.
+// ta.bb() se llama DIRECTO aquí (no envuelto en una función propia) porque su
+// parámetro mult exige "simple float" — al pasarlo por un parámetro de función
+// definida por el usuario, Pine lo eleva a "series float" y rompe la llamada
+// ("argument of 'series float' type was used but a 'simple float' is expected").
+// ta.bb() ya devuelve [basis/middle, upper, lower] — NO [upper, middle, lower]
+// (confusión que costó un bug real en v2, ver docs/plans/bugs.md).
+[bb50Basis, bb50Upper, bb50Lower] = ta.bb(close, bb50LengthInput, bb50MultInput)
+
+bb50UpperPlot = plot(showBB50Input ? bb50Upper : na, title = 'BB50 Upper', color = color.new(bb50ColorInput, 70), linewidth = 1)
+bb50BasisPlot = plot(showBB50Input ? bb50Basis : na, title = 'BB50 Basis', color = color.new(bb50ColorInput, 40), linewidth = 1)
+bb50LowerPlot = plot(showBB50Input ? bb50Lower : na, title = 'BB50 Lower', color = color.new(bb50ColorInput, 70), linewidth = 1)
+fill(bb50UpperPlot, bb50LowerPlot, color.new(bb50ColorInput, 95))
+
+// ---- Consumo 4H: Equal Low barrido, Order Block matching, divergencia, sobreventa,
+// BB50 y score — alimentados por dTrend/eql*/ob* que vienen de dailyEngine() más
+// arriba. VISUAL ÚNICAMENTE — no manda ninguna orden real (ver scoreThresholdInput). ----
+[eqlPrice4h, eqlTime4h] = existEquals4h(eql1, eql2, eql3, eql4, eql5, eqlT1, eqlT2, eqlT3, eqlT4, eqlT5)
+[obTop4h, obBot4h, obTime4h, obBias4h] = existOrderblock4h(eqlPrice4h, ob1Top, ob1Bot, ob1T, ob1B, ob2Top, ob2Bot, ob2T, ob2B, ob3Top, ob3Bot, ob3T, ob3B, ob4Top, ob4Bot, ob4T, ob4B, ob5Top, ob5Bot, ob5T, ob5B)
+obValid4h = not na(obTop4h) and not na(obBot4h)
+
+stochDiv4h      = stochDivergence(stochK, stochasticDivLenInput)
+stochOversold4h = stochK < stochasticLowerInput
+bbTouch4h       = close <= bb50Lower
+
+score4h = calcScore4h(eqlPrice4h, obValid4h, stochDiv4h, stochOversold4h, bbTouch4h, dTrend)
+
+// fractalStatus == 'ACTIVE': no entra ni antes del inicio del fractal (WAITING) ni
+// después de romperse (BROKEN) — mismo gate que tick_broke_fractal en pipeline.py.
+canEnter4h = score4h > scoreThresholdInput and dTrend == 1 and obValid4h and fractalStatus == 'ACTIVE'
+// Flanco de subida: solo dispara en la PRIMERA barra donde la condición se cumple,
+// no en cada barra mientras se mantenga — evita repetir la misma señal.
+entrySignal4h = canEnter4h and not canEnter4h[1]
+
+// --- Order Block / Equal Low activos (los que matchearon la señal), dibujados con el
+// timestamp DIARIO real devuelto por dailyEngine() — mismo patrón que la caja del
+// Fractal/drawOrderBlocks: var creado una vez, reposicionado. Alcance reducido a solo
+// el elemento activo (no el historial completo), ver plan de esta sesión. ---
+var box  activeObBox  = na
+var line activeEqlLine = na
+
+if obValid4h
+    if na(activeObBox)
+        activeObBox := box.new(left = obTime4h, top = obTop4h, right = last_bar_time, bottom = obBot4h, xloc = xloc.bar_time, extend = extend.right, border_color = swingBullishOrderBlockColor, bgcolor = swingBullishOrderBlockColor)
+    activeObBox.set_top_left_point(chart.point.new(obTime4h, na, obTop4h))
+    activeObBox.set_bottom_right_point(chart.point.new(last_bar_time, na, obBot4h))
+
+if not na(eqlPrice4h)
+    // extend.right (igual que la caja del OB) en vez de recalcular x2 cada barra —
+    // el sweep es momentáneo (eqlPrice4h solo es no-na en la barra exacta del sweep),
+    // así que sin extend.right la línea quedaría "congelada" sin seguir el borde
+    // derecho en las barras siguientes.
+    line.delete(activeEqlLine)
+    activeEqlLine := line.new(x1 = eqlTime4h, y1 = eqlPrice4h, x2 = eqlTime4h, y2 = eqlPrice4h, xloc = xloc.bar_time, extend = extend.right, color = swingBullishColor, width = 1, style = line.style_dashed)
+
+// --- Señal de entrada — label visual con el score, qué condiciones contribuyeron, y
+// los 3 niveles hipotéticos de tranche (30/40/30%, mismos % que create_entries en
+// strategy.py). NO hay strategy.entry(), no hay seguimiento de posición, no hay TP/SL
+// — deliberadamente solo informativo en este paso (ver plan de esta sesión).
+// Gateado por showEntrySignalsInput: el score/canEnter4h/entrySignal4h se siguen
+// calculando igual aunque esté apagado (solo afecta si se DIBUJA la etiqueta). ---
+if showEntrySignalsInput and entrySignal4h
+    t1Price4h = obTop4h
+    t2Price4h = (obTop4h + obBot4h) / 2.0
+    t3Price4h = obBot4h
+    label.new(
+         bar_index,
+         low * 0.999,
+         "BUY SIGNAL — Score: " + str.tostring(score4h) + "\n" +
+         (not na(eqlPrice4h)  ? "EQL ✓ " : "") +
+         (obValid4h           ? "OB ✓ "  : "") +
+         (stochDiv4h          ? "DIV ✓ " : "") +
+         (bbTouch4h           ? "BB ✓ "  : "") +
+         (stochOversold4h     ? "OS ✓"   : "") +
+         "\nT1 " + str.tostring(t1Price4h, format.mintick) +
+         "  T2 " + str.tostring(t2Price4h, format.mintick) +
+         "  T3 " + str.tostring(t3Price4h, format.mintick),
+         style     = label.style_label_up,
+         color     = scoreSignalColorInput,
+         textcolor = color.white,
+         size      = size.small
+     )
+
+// Fractal — caja de seguridad (inicio/alto/bajo) + etiqueta de estado, mismo
+// patrón visual que drawHighLowSwings(): objetos var creados una vez, reposicionados
+// al borde derecho cada barra. El color pasa a rojo cuando el estado es BROKEN
+// (irreversible). El estado en sí (fractalStatus/fractalBroken) ya se calculó más
+// arriba, sin condición, en cada barra — esto solo lo dibuja.
+var box   fractalBox   = na
+var label fractalLabel = na
+
+if showFractalInput and not na(fractalEffHigh) and not na(fractalEffLow)
+    if na(fractalBox)
+        fractalBox   := box.new(left = fractalEffStart, top = fractalEffHigh, right = fractalEffStart, bottom = fractalEffLow, xloc = xloc.bar_time, extend = extend.right, border_color = fractalColorInput, bgcolor = color.new(fractalColorInput, 90))
+        fractalLabel := label.new(na, na, xloc = xloc.bar_time, color = color(na), textcolor = fractalColorInput, style = label.style_label_left, size = size.small)
+
+    // En modo Auto, high/low/start pueden seguir moviéndose mientras crece el año en
+    // curso — reposicionar la caja completa cada barra (mismos métodos que ya usa
+    // drawOrderBlocks() en este fichero), no solo la etiqueta.
+    fractalBox.set_top_left_point(chart.point.new(fractalEffStart, na, fractalEffHigh))
+    fractalBox.set_bottom_right_point(chart.point.new(last_bar_time, na, fractalEffLow))
+
+    if fractalStatus == 'BROKEN'
+        fractalBox.set_border_color(RED)
+        fractalBox.set_bgcolor(color.new(RED, 90))
+        fractalLabel.set_textcolor(RED)
+
+    fractalRightTimeBar = last_bar_time + 20 * (time - time[1])
+    fractalLabel.set_point(chart.point.new(fractalRightTimeBar, na, fractalEffHigh))
+    fractalLabel.set_text('Fractal: ' + fractalStatus)
+
+//---------------------------------------------------------------------------------------------------------------------}
+//ALERTS
+//---------------------------------------------------------------------------------------------------------------------{
+alertcondition(currentAlerts.internalBullishBOS,        'Internal Bullish BOS',         'Internal Bullish BOS formed')
+alertcondition(currentAlerts.internalBullishCHoCH,      'Internal Bullish CHoCH',       'Internal Bullish CHoCH formed')
+alertcondition(currentAlerts.internalBearishBOS,        'Internal Bearish BOS',         'Internal Bearish BOS formed')
+alertcondition(currentAlerts.internalBearishCHoCH,      'Internal Bearish CHoCH',       'Internal Bearish CHoCH formed')
+
+alertcondition(currentAlerts.swingBullishBOS,           'Bullish BOS',                  'Internal Bullish BOS formed')
+alertcondition(currentAlerts.swingBullishCHoCH,         'Bullish CHoCH',                'Internal Bullish CHoCH formed')
+alertcondition(currentAlerts.swingBearishBOS,           'Bearish BOS',                  'Bearish BOS formed')
+alertcondition(currentAlerts.swingBearishCHoCH,         'Bearish CHoCH',                'Bearish CHoCH formed')
+
+alertcondition(currentAlerts.internalBullishOrderBlock, 'Bullish Internal OB Breakout', 'Price broke bullish internal OB')
+alertcondition(currentAlerts.internalBearishOrderBlock, 'Bearish Internal OB Breakout', 'Price broke bearish internal OB')
+alertcondition(currentAlerts.swingBullishOrderBlock,    'Bullish Swing OB Breakout',    'Price broke bullish swing OB')
+alertcondition(currentAlerts.swingBearishOrderBlock,    'Bearish Swing OB Breakout',    'Price broke bearish swing OB')
+
+alertcondition(currentAlerts.equalHighs,                'Equal Highs',                  'Equal highs detected')
+alertcondition(currentAlerts.equalLows,                 'Equal Lows',                   'Equal lows detected')
+
+alertcondition(currentAlerts.bullishFairValueGap,       'Bullish FVG',                  'Bullish FVG formed')
+alertcondition(currentAlerts.bearishFairValueGap,       'Bearish FVG',                  'Bearish FVG formed')
+
+//---------------------------------------------------------------------------------------------------------------------}

@@ -1,0 +1,663 @@
+// =============================================================================
+// Nexora SMC LONG Strategy — Pine Script v6
+// Réplica fiel de pipeline.py + strategy.py + app/tradingview/smc_indicator.py
+// Aplicar en chart 4H. El motor SMC (BOS/CHoCH, Equal Lows, Order Blocks) corre
+// sobre velas DIARIAS vía request.security(), igual que initialize_ipda_target_elements()
+// en Python — NO se recalcula en 4H.
+//
+// Alcance: LONG-only (el lado SHORT existe en Python pero está fuera de alcance aquí).
+// Ver docs/plans/pine-strategy-rearchitecture.md para el diseño completo y
+// docs/plans/bugs.md para discrepancias conocidas y aproximaciones aceptadas.
+// =============================================================================
+//@version=6
+strategy(
+     title             = "Nexora SMC LONG",
+     overlay           = true,
+     default_qty_type  = strategy.percent_of_equity,
+     initial_capital   = 1000,
+     commission_type   = strategy.commission.percent,
+     commission_value  = 0.1,
+     max_boxes_count   = 500,
+     max_lines_count   = 500,
+     max_labels_count  = 200
+ )
+
+// =============================================================================
+// SECCIÓN 1 — INPUTS
+// =============================================================================
+i_tp_pct        = input.float(6.0,    "Take Profit %",       minval=0.1,  step=0.1,  group="Risk") / 100
+i_sl_pct        = input.float(2.0,    "Stop Loss %",         minval=0.1,  step=0.1,  group="Risk") / 100
+i_sl_limit_pct  = input.float(2.2,    "Stop Limit %",        minval=0.1,  step=0.1,  group="Risk") / 100
+i_score_thresh  = input.int(50,       "Score threshold",     minval=10,   maxval=120, group="Strategy")
+i_div_len       = input.int(20,       "Divergence lookback (4H, aproximación — ver bugs.md)", minval=10, maxval=50, group="SMC")
+i_stoch_len     = input.int(14,       "Stochastic length",   minval=5,    maxval=30,  group="SMC")
+i_stoch_d       = input.int(3,        "Stochastic smooth",   minval=1,    maxval=10,  group="SMC")
+
+// Fractal de seguridad — marcado MANUALMENTE por el usuario, igual que en Python
+// (pipeline.py: Fractal(high=..., low=..., ...) hardcoded al iniciar el ciclo).
+// Si una vela 4H perfora este rango, la estrategia deja de operar para siempre
+// (irreversible, replica feed.stop() en pipeline.py::on_4h_kline).
+i_fractal_high  = input.float(1000000000.0, "Fractal High (manual)", group="Fractal")
+i_fractal_low   = input.float(0.0,          "Fractal Low (manual)",  group="Fractal")
+
+i_show_ipda     = input.bool(true,    "Show IPDA levels",                             group="Display")
+i_show_ob       = input.bool(true,    "Show Order Blocks",                            group="Display")
+i_show_eql      = input.bool(true,    "Show Equal Lows",                              group="Display")
+i_show_bb       = input.bool(true,    "Show BB50 (4H)",                               group="Display")
+i_show_fractal  = input.bool(false,   "Show Fractal lines (off por defecto — los valores por defecto son extremos y distorsionan la escala)", group="Display")
+
+// =============================================================================
+// SECCIÓN 2 — MOTOR SMC DIARIO (≡ initialize_ipda_target_elements + SMCIndicator)
+// Puerto recortado (sin dibujo) de docs/smc-luxalgo.pine, ejecutado vía
+// request.security("D", ...) para que el estado persistente (var) viva en el
+// contexto de la vela DIARIA, no en el del chart 4H.
+//
+// Solo se necesitan escalares en el cruce de request.security (ver
+// docs/plans/pine-strategy-rearchitecture.md, sección "Decisión de diseño clave"):
+//   d_trend, d_bb50_mid, 5 equal-lows (más antiguo primero), 5 order blocks
+//   (top/bottom, ordenados por top descendente).
+// =============================================================================
+// Los 5 slots de Order Blocks están fijos estructuralmente por las variables
+// ob_top_1..5/ob_bot_1..5 (no hay un loop parametrizado por una constante aparte).
+MAX_EQL_SLOTS = 5
+
+// Pine no permite funciones anidadas dentro de otra función — deben declararse
+// en el ámbito global del script (igual que en docs/smc-luxalgo.pine, donde
+// storeOrdeBlock/deleteOrderBlocks están al nivel superior). f_daily_engine()
+// las llama pasando los arrays por referencia.
+
+// f_store_ob — puerto de storeOrdeBlock(): busca el extremo (parsedHigh máximo
+// para OB bajista, parsedLow mínimo para OB alcista) entre el bar del pivot y
+// el bar actual, e inserta el nuevo Order Block al frente del array.
+f_store_ob(int pivot_bar_idx, int bias, array<float> parsed_highs, array<float> parsed_lows, array<float> top_arr, array<float> bot_arr, array<int> dir_arr) =>
+    if not na(pivot_bar_idx) and pivot_bar_idx < bar_index
+        best_idx = pivot_bar_idx
+        if bias == -1
+            best_val = array.get(parsed_highs, pivot_bar_idx)
+            for k = pivot_bar_idx + 1 to bar_index - 1
+                v = array.get(parsed_highs, k)
+                if v > best_val
+                    best_val := v
+                    best_idx := k
+        else
+            best_val = array.get(parsed_lows, pivot_bar_idx)
+            for k = pivot_bar_idx + 1 to bar_index - 1
+                v = array.get(parsed_lows, k)
+                if v < best_val
+                    best_val := v
+                    best_idx := k
+        array.unshift(top_arr, array.get(parsed_highs, best_idx))
+        array.unshift(bot_arr, array.get(parsed_lows, best_idx))
+        array.unshift(dir_arr, bias)
+        if array.size(top_arr) > 100
+            array.pop(top_arr)
+            array.pop(bot_arr)
+            array.pop(dir_arr)
+
+// f_delete_mitigated — puerto de deleteOrderBlocks(), modo "High/Low" (default):
+// OB bajista mitigado si high > top; OB alcista mitigado si low < bottom.
+f_delete_mitigated(array<float> top_arr, array<float> bot_arr, array<int> dir_arr) =>
+    i = array.size(top_arr) - 1
+    while i >= 0
+        d = array.get(dir_arr, i)
+        mitigated = (d == -1 and high > array.get(top_arr, i)) or (d == 1 and low < array.get(bot_arr, i))
+        if mitigated
+            array.remove(top_arr, i)
+            array.remove(bot_arr, i)
+            array.remove(dir_arr, i)
+        i -= 1
+
+f_daily_engine() =>
+    // ---- 2.1 Parsed bars (intercambio high/low en velas de alta volatilidad) ----
+    // ATR(200) para el filtro de volatilidad de Order Blocks, igual que LuxAlgo (atrMeasure).
+    atr_ob_filter = ta.atr(200)
+    // ATR(100) para el umbral de Equal Highs/Lows — Python precalcula este ATR
+    // específicamente con período 100 (strategy.py: ta.atr(...,100)) y lo pasa
+    // como precomputed_atr al motor SMC.
+    atr_eq_thresh = ta.atr(100)
+
+    high_vol_bar = (high - low) >= (2 * atr_ob_filter)
+    parsed_high  = high_vol_bar ? low  : high
+    parsed_low   = high_vol_bar ? high : low
+
+    var array<float> parsed_highs = array.new_float(0)
+    var array<float> parsed_lows  = array.new_float(0)
+    array.push(parsed_highs, parsed_high)
+    array.push(parsed_lows,  parsed_low)
+
+    // ---- 2.2 Leg/pivot state — 3 variantes fijas: swing(50), internal(5), equal(3) ----
+    var int leg_swing    = 0   // 0 = BEARISH_LEG, 1 = BULLISH_LEG
+    var int leg_internal = 0
+    var int leg_equal    = 0
+
+    prev_leg_swing    = leg_swing
+    prev_leg_internal = leg_internal
+    prev_leg_equal    = leg_equal
+
+    new_leg_high_swing = high[50] > ta.highest(50)
+    new_leg_low_swing  = low[50]  < ta.lowest(50)
+    leg_swing := new_leg_high_swing ? 0 : new_leg_low_swing ? 1 : leg_swing
+
+    new_leg_high_internal = high[5] > ta.highest(5)
+    new_leg_low_internal  = low[5]  < ta.lowest(5)
+    leg_internal := new_leg_high_internal ? 0 : new_leg_low_internal ? 1 : leg_internal
+
+    new_leg_high_equal = high[3] > ta.highest(3)
+    new_leg_low_equal  = low[3]  < ta.lowest(3)
+    leg_equal := new_leg_high_equal ? 0 : new_leg_low_equal ? 1 : leg_equal
+
+    // ---- 2.3 Pivot bookkeeping ----
+    var float swing_high_level = na
+    var float swing_low_level  = na
+    var int   swing_high_bar   = na
+    var int   swing_low_bar    = na
+    var bool  swing_high_crossed = false
+    var bool  swing_low_crossed  = false
+
+    var float internal_high_level = na
+    var float internal_low_level  = na
+    var int   internal_high_bar   = na
+    var int   internal_low_bar    = na
+    var bool  internal_high_crossed = false
+    var bool  internal_low_crossed  = false
+
+    var float equal_high_ref = na
+    var float equal_low_ref  = na
+
+    var int swing_trend    = 0   // 0 = sin tendencia, 1 = alcista, -1 = bajista
+    var int internal_trend = 0
+
+    var array<float> eql_arr = array.new_float(0)   // equal-lows, más antiguo primero
+    var array<float> eqh_arr = array.new_float(0)   // equal-highs (paridad, no se consume aguas abajo)
+
+    // -- swing (50) --
+    new_pivot_swing  = leg_swing != prev_leg_swing
+    pivot_low_swing  = new_pivot_swing and (leg_swing - prev_leg_swing) == 1
+    pivot_high_swing = new_pivot_swing and (leg_swing - prev_leg_swing) == -1
+    if new_pivot_swing
+        if pivot_low_swing
+            swing_low_level   := low[50]
+            swing_low_bar     := bar_index - 50
+            swing_low_crossed := false
+        else if pivot_high_swing
+            swing_high_level   := high[50]
+            swing_high_bar     := bar_index - 50
+            swing_high_crossed := false
+
+    // -- internal (5) --
+    new_pivot_internal  = leg_internal != prev_leg_internal
+    pivot_low_internal  = new_pivot_internal and (leg_internal - prev_leg_internal) == 1
+    pivot_high_internal = new_pivot_internal and (leg_internal - prev_leg_internal) == -1
+    if new_pivot_internal
+        if pivot_low_internal
+            internal_low_level   := low[5]
+            internal_low_bar     := bar_index - 5
+            internal_low_crossed := false
+        else if pivot_high_internal
+            internal_high_level   := high[5]
+            internal_high_bar     := bar_index - 5
+            internal_high_crossed := false
+
+    // -- equal (3) — detección de Equal Lows/Highs con umbral ATR --
+    new_pivot_equal  = leg_equal != prev_leg_equal
+    pivot_low_equal  = new_pivot_equal and (leg_equal - prev_leg_equal) == 1
+    pivot_high_equal = new_pivot_equal and (leg_equal - prev_leg_equal) == -1
+    if new_pivot_equal
+        if pivot_low_equal
+            cand_low = low[3]
+            if not na(equal_low_ref) and math.abs(equal_low_ref - cand_low) < (0.1 * atr_eq_thresh)
+                array.push(eql_arr, cand_low)
+                if array.size(eql_arr) > MAX_EQL_SLOTS
+                    array.shift(eql_arr)
+            equal_low_ref := cand_low
+        else if pivot_high_equal
+            cand_high = high[3]
+            if not na(equal_high_ref) and math.abs(equal_high_ref - cand_high) < (0.1 * atr_eq_thresh)
+                array.push(eqh_arr, cand_high)
+                if array.size(eqh_arr) > MAX_EQL_SLOTS
+                    array.shift(eqh_arr)
+            equal_high_ref := cand_high
+
+    // ---- 2.4 Order blocks — almacenamiento (≡ storeOrdeBlock) ----
+    var array<float> internal_ob_top = array.new_float(0)
+    var array<float> internal_ob_bot = array.new_float(0)
+    var array<int>   internal_ob_dir = array.new_int(0)   // 1 = BULLISH, -1 = BEARISH
+
+    var array<float> swing_ob_top = array.new_float(0)
+    var array<float> swing_ob_bot = array.new_float(0)
+    var array<int>   swing_ob_dir = array.new_int(0)
+
+    // ---- 2.5 BOS/CHoCH (≡ displayStructure) — internal primero, luego swing ----
+    // Solo nos interesa el flip de tendencia y la creación de OB; no se distingue
+    // BOS de CHoCH porque no se consume aguas abajo.
+    extra_bull_internal = na(swing_high_level) or internal_high_level != swing_high_level
+    if not na(internal_high_level) and not internal_high_crossed and extra_bull_internal
+        if ta.crossover(close, internal_high_level)
+            internal_high_crossed := true
+            internal_trend := 1
+            f_store_ob(internal_high_bar, 1, parsed_highs, parsed_lows, internal_ob_top, internal_ob_bot, internal_ob_dir)
+
+    extra_bear_internal = na(swing_low_level) or internal_low_level != swing_low_level
+    if not na(internal_low_level) and not internal_low_crossed and extra_bear_internal
+        if ta.crossunder(close, internal_low_level)
+            internal_low_crossed := true
+            internal_trend := -1
+            f_store_ob(internal_low_bar, -1, parsed_highs, parsed_lows, internal_ob_top, internal_ob_bot, internal_ob_dir)
+
+    if not na(swing_high_level) and not swing_high_crossed
+        if ta.crossover(close, swing_high_level)
+            swing_high_crossed := true
+            swing_trend := 1
+            f_store_ob(swing_high_bar, 1, parsed_highs, parsed_lows, swing_ob_top, swing_ob_bot, swing_ob_dir)
+
+    if not na(swing_low_level) and not swing_low_crossed
+        if ta.crossunder(close, swing_low_level)
+            swing_low_crossed := true
+            swing_trend := -1
+            f_store_ob(swing_low_bar, -1, parsed_highs, parsed_lows, swing_ob_top, swing_ob_bot, swing_ob_dir)
+
+    // ---- 2.6 Mitigación (≡ deleteOrderBlocks, modo High/Low) ----
+    f_delete_mitigated(internal_ob_top, internal_ob_bot, internal_ob_dir)
+    f_delete_mitigated(swing_ob_top, swing_ob_bot, swing_ob_dir)
+
+    // ---- 2.7 BB50 diario (para TP) ----
+    // ta.bb(src, len, mult) devuelve [basis/middle, upper, lower] — NO [upper, middle, lower].
+    [d_bb50_mid, d_bb50_upper, d_bb50_lower] = ta.bb(close, 50, 2)
+
+    // ---- 2.8 Aplanado a escalares — top 5 OB por `top` descendente ----
+    work_top = array.copy(internal_ob_top)
+    work_bot = array.copy(internal_ob_bot)
+    array.concat(work_top, array.copy(swing_ob_top))
+    array.concat(work_bot, array.copy(swing_ob_bot))
+
+    // Pine invierte automáticamente la dirección del for cuando from > to (sin
+    // `by` explícito) en vez de simplemente no ejecutar el loop — con n_ob 0 o 1,
+    // "for i = 1 to n_ob - 1" pasaría a recorrer i = 1, 0, -1 y rompería con
+    // array.get fuera de rango. Por eso se guarda explícitamente con n_ob > 1.
+    n_ob = array.size(work_top)
+    if n_ob > 1
+        for i = 1 to n_ob - 1
+            key_top = array.get(work_top, i)
+            key_bot = array.get(work_bot, i)
+            j = i - 1
+            while j >= 0 and array.get(work_top, j) < key_top
+                array.set(work_top, j + 1, array.get(work_top, j))
+                array.set(work_bot, j + 1, array.get(work_bot, j))
+                j -= 1
+            array.set(work_top, j + 1, key_top)
+            array.set(work_bot, j + 1, key_bot)
+
+    ob_top_1 = n_ob > 0 ? array.get(work_top, 0) : na
+    ob_bot_1 = n_ob > 0 ? array.get(work_bot, 0) : na
+    ob_top_2 = n_ob > 1 ? array.get(work_top, 1) : na
+    ob_bot_2 = n_ob > 1 ? array.get(work_bot, 1) : na
+    ob_top_3 = n_ob > 2 ? array.get(work_top, 2) : na
+    ob_bot_3 = n_ob > 2 ? array.get(work_bot, 2) : na
+    ob_top_4 = n_ob > 3 ? array.get(work_top, 3) : na
+    ob_bot_4 = n_ob > 3 ? array.get(work_bot, 3) : na
+    ob_top_5 = n_ob > 4 ? array.get(work_top, 4) : na
+    ob_bot_5 = n_ob > 4 ? array.get(work_bot, 4) : na
+
+    n_eql = array.size(eql_arr)
+    eql_1 = n_eql > 0 ? array.get(eql_arr, 0) : na
+    eql_2 = n_eql > 1 ? array.get(eql_arr, 1) : na
+    eql_3 = n_eql > 2 ? array.get(eql_arr, 2) : na
+    eql_4 = n_eql > 3 ? array.get(eql_arr, 3) : na
+    eql_5 = n_eql > 4 ? array.get(eql_arr, 4) : na
+
+    d_trend = internal_trend
+
+    // ---- 2.9 Annual / Semester high-low — anclados al año/semestre CALENDARIO ----
+    // (≡ strategy.py: year_start = Timestamp(current_dt.year, 1, 1); annual = df[df.date >= year_start]).
+    // Antes esto era un rolling window de 252/126 barras, que se recalcula cada
+    // barra y dibuja una "escalera" continua en vez de un nivel estable por año.
+    var float a_high = na
+    var float a_low  = na
+    var float s_high = na
+    var float s_low  = na
+    var int   prev_year     = na
+    var int   prev_semester = na
+
+    cur_year     = year(time)
+    cur_semester = month(time) <= 6 ? 1 : 2
+
+    new_year     = na(prev_year) or cur_year != prev_year
+    new_semester = na(prev_semester) or cur_year != prev_year or cur_semester != prev_semester
+
+    a_high := new_year ? high : math.max(a_high, high)
+    a_low  := new_year ? low  : math.min(a_low, low)
+    s_high := new_semester ? high : math.max(s_high, high)
+    s_low  := new_semester ? low  : math.min(s_low, low)
+
+    prev_year     := cur_year
+    prev_semester := cur_semester
+
+    [d_trend, d_bb50_mid, a_high, a_low, s_high, s_low,
+     ob_top_1, ob_bot_1, ob_top_2, ob_bot_2, ob_top_3, ob_bot_3, ob_top_4, ob_bot_4, ob_top_5, ob_bot_5,
+     eql_1, eql_2, eql_3, eql_4, eql_5]
+
+[d_trend, d_bb50_mid, annual_high, annual_low, semester_high, semester_low,
+ ob_top_1, ob_bot_1, ob_top_2, ob_bot_2, ob_top_3, ob_bot_3, ob_top_4, ob_bot_4, ob_top_5, ob_bot_5,
+ eql_1, eql_2, eql_3, eql_4, eql_5] = request.security(syminfo.tickerid, "D", f_daily_engine(), lookahead = barmerge.lookahead_off)
+
+// =============================================================================
+// SECCIÓN 3 — INDICADORES 4H (≡ bbands.py, stochastic_oscillator.py en strategy.py)
+// =============================================================================
+f_bb50() =>
+    ta.bb(close, 50, 2)
+
+f_stochastic_oscillator(length, d_length) =>
+    raw_k  = 100.0 * (close - ta.lowest(low, length)) / (ta.highest(high, length) - ta.lowest(low, length))
+    slow_k = ta.sma(raw_k, d_length)
+    fast_d = ta.sma(slow_k, d_length)
+    [slow_k, fast_d]
+
+f_stoch_oversold(slow_k) =>
+    slow_k < 20
+
+// Ventana fija (i_div_len) — aproximación documentada e intencional, ver bugs.md:
+// el equivalente Python parte un buffer de ~500 velas cargado una sola vez al
+// iniciar el pipeline (no es un diseño deliberado a replicar al pie de la letra).
+f_stoch_divergence(slow_k, div_len) =>
+    mid      = div_len / 2
+    price_l1 = ta.lowest(close,   mid)
+    price_l2 = ta.lowest(close[mid], mid)
+    k_l1     = ta.lowest(slow_k,  mid)
+    k_l2     = ta.lowest(slow_k[mid], mid)
+    price_l1 < price_l2 and k_l1 > k_l2
+
+f_bb50_entry_exist(bb_lower) =>
+    close <= bb_lower
+
+// ta.bb(src, len, mult) devuelve [basis/middle, upper, lower] — NO [upper, middle, lower].
+[bb_middle, bb_upper, bb_lower] = f_bb50()
+[slow_k, fast_d]                = f_stochastic_oscillator(i_stoch_len, i_stoch_d)
+
+stoch_div = f_stoch_divergence(slow_k, i_div_len)
+stoch_os  = f_stoch_oversold(slow_k)
+bb_entry  = f_bb50_entry_exist(bb_lower)
+
+// =============================================================================
+// SECCIÓN 4 — CONSUMO 4H (≡ exist_equals, exist_orderblock, calc_strategy_score)
+// =============================================================================
+
+// f_exist_equals_4h — replica el bucle Python: se detiene en el PRIMER nivel
+// que el low del tick rompe, sea o no un sweep válido (no sigue revisando los
+// siguientes niveles aunque ese primero resulte en "falso quiebre").
+f_exist_equals_4h(eql_1, eql_2, eql_3, eql_4, eql_5) =>
+    float result  = na
+    bool  decided = false
+    if not decided and not na(eql_1) and low < eql_1
+        result := close > eql_1 ? eql_1 : na
+        decided := true
+    if not decided and not na(eql_2) and low < eql_2
+        result := close > eql_2 ? eql_2 : na
+        decided := true
+    if not decided and not na(eql_3) and low < eql_3
+        result := close > eql_3 ? eql_3 : na
+        decided := true
+    if not decided and not na(eql_4) and low < eql_4
+        result := close > eql_4 ? eql_4 : na
+        decided := true
+    if not decided and not na(eql_5) and low < eql_5
+        result := close > eql_5 ? eql_5 : na
+        decided := true
+    result
+
+// f_exist_orderblock_4h — los slots vienen pre-ordenados por top descendente
+// desde el motor diario, así que el primero que califica es el máximo
+// (≡ "if ob.top > best.top" de exist_orderblock en Python).
+f_exist_orderblock_4h(equal_price, t1, b1, t2, b2, t3, b3, t4, b4, t5, b5) =>
+    float best_top = na
+    float best_bot = na
+    if not na(equal_price)
+        if not na(t1) and t1 < equal_price
+            best_top := t1
+            best_bot := b1
+        else if not na(t2) and t2 < equal_price
+            best_top := t2
+            best_bot := b2
+        else if not na(t3) and t3 < equal_price
+            best_top := t3
+            best_bot := b3
+        else if not na(t4) and t4 < equal_price
+            best_top := t4
+            best_bot := b4
+        else if not na(t5) and t5 < equal_price
+            best_top := t5
+            best_bot := b5
+    [best_top, best_bot]
+
+// f_calc_strategy_score_4h — pesos corregidos (sobreventa +15, no +10).
+// Simplificado LONG-only: se gatea con d_trend == 1 en el bloque de entradas
+// (la rama BEARISH de Python solo alimenta señales SHORT, fuera de alcance).
+f_calc_strategy_score_4h(equal_price, ob_valid, stoch_div, stoch_os, bb_entry, d_trend) =>
+    has_equal = not na(equal_price)
+    score = 0
+    score := has_equal  ? score + 35 : score   // Equal Lows barridos
+    score := ob_valid   ? score + 25 : score   // Order Block presente
+    score := stoch_div  ? score + 20 : score   // Divergencia alcista
+    score := stoch_os   ? score + 15 : score   // Sobreventa estocástico (FIX: era +10)
+    score := bb_entry   ? score + 15 : score   // BB50 banda inferior
+    score := d_trend == 1 ? score + 10 : score // Bonus de confluencia institucional
+    score
+
+f_calc_take_profit(entry_price, tp_pct, bb_middle_daily) =>
+    tp_by_pct = entry_price * (1.0 + tp_pct)
+    bb_middle_daily > 0 and bb_middle_daily < tp_by_pct ? bb_middle_daily : tp_by_pct
+
+f_calc_stop_loss(entry_price, sl_pct, sl_limit_pct) =>
+    stop_price       = entry_price * (1.0 - sl_pct)
+    stop_limit_price = entry_price * (1.0 - sl_limit_pct)
+    [stop_price, stop_limit_price]
+
+eql_price = f_exist_equals_4h(eql_1, eql_2, eql_3, eql_4, eql_5)
+[ob_top, ob_bot] = f_exist_orderblock_4h(eql_price, ob_top_1, ob_bot_1, ob_top_2, ob_bot_2, ob_top_3, ob_bot_3, ob_top_4, ob_bot_4, ob_top_5, ob_bot_5)
+ob_valid  = not na(ob_top) and not na(ob_bot)
+score     = f_calc_strategy_score_4h(eql_price, ob_valid, stoch_div, stoch_os, bb_entry, d_trend)
+
+// =============================================================================
+// SECCIÓN 5 — FRACTAL KILL-SWITCH (≡ tick_broke_fractal)
+// Irreversible: una vez roto, no se vuelven a evaluar entradas.
+// =============================================================================
+var bool fractal_broken = false
+if not fractal_broken and (high > i_fractal_high or low < i_fractal_low)
+    fractal_broken := true
+
+// =============================================================================
+// SECCIÓN 6 — ENTRADAS / SALIDAS (≡ create_entries, on_4h_kline, on_order_status_change)
+// =============================================================================
+
+// campaign_active: igual que context.amount_of_entries>0 en Python — se activa
+// en cuanto se colocan las 3 tranches (lleguen o no a llenarse), no solo cuando
+// hay posiciones llenas (strategy.opentrades cuenta solo posiciones llenas).
+var bool campaign_active   = false
+var bool siblings_cancelled = false
+var bool any_filled_ever    = false
+
+can_enter = not fractal_broken and not campaign_active and d_trend == 1 and score > i_score_thresh and ob_valid
+
+if can_enter
+    t1_price = ob_top                     // Tranche 1 — 30% en el techo del OB
+    t2_price = (ob_top + ob_bot) / 2.0     // Tranche 2 — 40% en el midpoint del OB
+    t3_price = ob_bot                      // Tranche 3 — 30% en el suelo del OB
+
+    // qty= se interpreta como % de equity porque default_qty_type=strategy.percent_of_equity
+    // en la declaración strategy() — Pine no tiene un parámetro qty_percent en strategy.entry().
+    strategy.entry("L1", strategy.long, qty=30, limit=t1_price, comment="T1 OB Top")
+    strategy.entry("L2", strategy.long, qty=40, limit=t2_price, comment="T2 OB Mid")
+    strategy.entry("L3", strategy.long, qty=30, limit=t3_price, comment="T3 OB Bot")
+
+    campaign_active   := true
+    siblings_cancelled := false
+    any_filled_ever    := false
+
+if strategy.opentrades > 0
+    any_filled_ever := true
+    for i = 0 to strategy.opentrades - 1
+        ep  = strategy.opentrades.entry_price(i)
+        eid = strategy.opentrades.entry_id(i)
+        tp             = f_calc_take_profit(ep, i_tp_pct, d_bb50_mid)
+        [sl, sl_limit] = f_calc_stop_loss(ep, i_sl_pct, i_sl_limit_pct)
+        // sl_limit se calcula para paridad informativa con Python (que coloca un
+        // stop-limit real vía OCO en Binance) pero Pine strategy.exit() no tiene
+        // stop-limit nativo — ver docs/plans/bugs.md.
+        strategy.exit("X_" + eid, from_entry=eid, limit=tp, stop=sl, comment_profit="TP_HIT", comment_loss="SL_HIT")
+
+// Cancelar tranches pendientes (no llenadas) en cuanto el PRIMER TP se ejecuta
+// (≡ context.amount_taked_entries == 1 en on_order_status_change).
+var int prev_closed_count = 0
+if strategy.closedtrades > prev_closed_count
+    last_exit_comment = strategy.closedtrades.exit_comment(strategy.closedtrades - 1)
+    if last_exit_comment == "TP_HIT" and not siblings_cancelled
+        strategy.cancel("L1")
+        strategy.cancel("L2")
+        strategy.cancel("L3")
+        siblings_cancelled := true
+prev_closed_count := strategy.closedtrades
+
+// Red de seguridad: una vez que todo lo que llegó a llenarse ya cerró (TP o SL),
+// liberar el ciclo aunque nunca haya disparado un TP. Evita que la estrategia
+// quede bloqueada para siempre — ver docs/plans/bugs.md sobre el equivalente
+// Python (all_closed) que en la práctica casi nunca se alcanza.
+if campaign_active and any_filled_ever and strategy.opentrades == 0
+    strategy.cancel("L1")
+    strategy.cancel("L2")
+    strategy.cancel("L3")
+    campaign_active    := false
+    siblings_cancelled := false
+    any_filled_ever     := false
+
+// =============================================================================
+// SECCIÓN 7 — VISUALIZACIÓN
+// =============================================================================
+
+// Paleta — mismos colores que docs/smc-luxalgo.pine (constantes GREEN/RED/BLUE
+// y los azules de Order Blocks bullish, líneas 15-21 y 104-107 de ese fichero).
+LUX_GREEN          = #089981   // swingBullishColor / EQL
+LUX_RED             = #F23645   // swingBearishColor / EQH (no usado, LONG-only)
+LUX_BLUE            = #2157f3   // niveles MTF (daily/weekly/monthly)
+LUX_BULLISH_OB      = #1848cc   // swingBullishOrderBlockColor
+
+// --- Order Block — mismo azul que el Order Block alcista de LuxAlgo ---
+var box ob_box = na
+if i_show_ob and ob_valid
+    if na(ob_box) or box.get_top(ob_box) != ob_top
+        box.delete(ob_box)
+        ob_box := box.new(
+             left        = bar_index - 1,
+             top         = ob_top,
+             right       = bar_index + 50,
+             bottom      = ob_bot,
+             border_color = LUX_BULLISH_OB,
+             bgcolor      = color.new(LUX_BULLISH_OB, 80),
+             extend       = extend.right
+         )
+
+// --- Equal Low barrido — mismo verde que swingBullishColor en LuxAlgo (EQL) ---
+var line eql_line = na
+if i_show_eql and not na(eql_price)
+    line.delete(eql_line)
+    eql_line := line.new(
+         x1     = bar_index - 10,
+         y1     = eql_price,
+         x2     = bar_index + 5,
+         y2     = eql_price,
+         color  = LUX_GREEN,
+         width  = 1,
+         style  = line.style_dashed
+     )
+
+// --- BB50 (4H, solo para visual/confluencia) — sin equivalente en LuxAlgo (no trae BB) ---
+bb_upper_plot  = plot(i_show_bb ? bb_upper  : na, "BB50 Upper (4H)",  color.new(color.blue, 70), linewidth=1)
+bb_middle_plot = plot(i_show_bb ? bb_middle : na, "BB50 Middle (4H)", color.new(color.blue, 40), linewidth=1)
+bb_lower_plot  = plot(i_show_bb ? bb_lower  : na, "BB50 Lower (4H)",  color.new(color.blue, 70), linewidth=1)
+fill(bb_upper_plot, bb_lower_plot, color.new(color.blue, 95))
+plot(i_show_bb ? d_bb50_mid : na, "BB50 Middle (Daily, usado en TP)", color.new(color.purple, 30), linewidth=2)
+
+// --- Niveles IPDA (annual / semester high-low) — mismo azul que drawLevels() en LuxAlgo.
+// Una sola línea por el año/semestre EN CURSO (no se acumulan años anteriores),
+// extendida de inicio a fin de ese período calendario (1/1-31/12, o medio año),
+// con etiqueta de texto. Se redibuja (delete + new) solo cuando cambia el valor
+// o el año/semestre — mismo patrón que la caja del Order Block más arriba.
+var line  annual_high_line    = na
+var line  annual_low_line     = na
+var label annual_high_label   = na
+var label annual_low_label    = na
+var line  semester_high_line  = na
+var line  semester_low_line   = na
+var label semester_high_label = na
+var label semester_low_label  = na
+
+var float prev_annual_high    = na
+var float prev_annual_low     = na
+var float prev_semester_high  = na
+var float prev_semester_low   = na
+var int   prev_ipda_year      = na
+var int   prev_ipda_semester  = na
+
+if i_show_ipda
+    cur_y   = year(time)
+    cur_sem = month(time) <= 6 ? 1 : 2
+
+    annual_changed = na(prev_annual_high) or annual_high != prev_annual_high or annual_low != prev_annual_low or cur_y != prev_ipda_year
+    if annual_changed
+        year_start_ts = timestamp(cur_y, 1, 1, 0, 0)
+        year_end_ts   = timestamp(cur_y, 12, 31, 23, 59)
+
+        line.delete(annual_high_line)
+        line.delete(annual_low_line)
+        label.delete(annual_high_label)
+        label.delete(annual_low_label)
+
+        annual_high_line  := line.new(year_start_ts, annual_high, year_end_ts, annual_high, xloc=xloc.bar_time, color=LUX_BLUE, width=2, style=line.style_solid)
+        annual_low_line   := line.new(year_start_ts, annual_low,  year_end_ts, annual_low,  xloc=xloc.bar_time, color=LUX_BLUE, width=2, style=line.style_solid)
+        annual_high_label := label.new(year_end_ts, annual_high, xloc=xloc.bar_time, text="Annual High", style=label.style_label_left, color=color(na), textcolor=LUX_BLUE, size=size.small)
+        annual_low_label  := label.new(year_end_ts, annual_low,  xloc=xloc.bar_time, text="Annual Low",  style=label.style_label_left, color=color(na), textcolor=LUX_BLUE, size=size.small)
+
+        prev_annual_high := annual_high
+        prev_annual_low  := annual_low
+        prev_ipda_year   := cur_y
+
+    semester_changed = na(prev_semester_high) or semester_high != prev_semester_high or semester_low != prev_semester_low or cur_sem != prev_ipda_semester or cur_y != prev_ipda_year
+    if semester_changed
+        sem_start_ts = cur_sem == 1 ? timestamp(cur_y, 1, 1, 0, 0)    : timestamp(cur_y, 7, 1, 0, 0)
+        sem_end_ts   = cur_sem == 1 ? timestamp(cur_y, 6, 30, 23, 59) : timestamp(cur_y, 12, 31, 23, 59)
+
+        line.delete(semester_high_line)
+        line.delete(semester_low_line)
+        label.delete(semester_high_label)
+        label.delete(semester_low_label)
+
+        semester_high_line  := line.new(sem_start_ts, semester_high, sem_end_ts, semester_high, xloc=xloc.bar_time, color=color.new(LUX_BLUE, 40), width=1, style=line.style_dashed)
+        semester_low_line   := line.new(sem_start_ts, semester_low,  sem_end_ts, semester_low,  xloc=xloc.bar_time, color=color.new(LUX_BLUE, 40), width=1, style=line.style_dashed)
+        semester_high_label := label.new(sem_end_ts, semester_high, xloc=xloc.bar_time, text="Semester High", style=label.style_label_left, color=color(na), textcolor=LUX_BLUE, size=size.small)
+        semester_low_label  := label.new(sem_end_ts, semester_low,  xloc=xloc.bar_time, text="Semester Low",  style=label.style_label_left, color=color(na), textcolor=LUX_BLUE, size=size.small)
+
+        prev_semester_high := semester_high
+        prev_semester_low  := semester_low
+        prev_ipda_semester := cur_sem
+
+// --- Fractal (líneas de referencia del kill-switch) ---
+plot(i_show_fractal ? i_fractal_high : na, "Fractal High", color.new(color.gray, 50), linewidth=1, style=plot.style_circles)
+plot(i_show_fractal ? i_fractal_low  : na, "Fractal Low",  color.new(color.gray, 50), linewidth=1, style=plot.style_circles)
+
+// --- Score label en la vela de señal ---
+if can_enter
+    label.new(
+         bar_index,
+         low * 0.999,
+         "Score: " + str.tostring(score) + "\n" +
+         (not na(eql_price) ? "EQL ✓ " : "") +
+         (ob_valid          ? "OB ✓ "  : "") +
+         (stoch_div         ? "DIV ✓ " : "") +
+         (bb_entry          ? "BB ✓ "  : "") +
+         (stoch_os          ? "OS ✓"   : ""),
+         style     = label.style_label_up,
+         color     = color.green,
+         textcolor = color.white,
+         size      = size.small
+     )
+
+// --- Fondo verde cuando hay condiciones de entrada / rojo si el fractal se rompió ---
+bgcolor(can_enter ? color.new(color.green, 93) : fractal_broken ? color.new(color.red, 95) : na)
