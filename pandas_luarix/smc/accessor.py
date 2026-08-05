@@ -753,9 +753,7 @@ class SMCAccessor:
             raise ValueError(f"mode inválido: {mode!r}")
         if direction not in (-1, 0, 1):
             raise ValueError(f"direction inválido: {direction!r}")
-        
-        print(mode)
-        
+
         check_positive_int("length", length)
         require_min_rows(self._df, length * 2 + 1, context=f"ipda_fractals(length={length})")
         df = self._df

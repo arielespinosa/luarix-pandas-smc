@@ -58,6 +58,21 @@ accessor que corresponda.
 | Salida = filas del df + columnas | todos los accessors | El resultado siempre es indexable contra el df de entrada. Salida vacía = `df.iloc[0:0]` con las columnas esperadas, nunca `None` ni un df sin columnas |
 | Columnas OHLC en minúscula | `validation.py` | `open`, `high`, `low`, `close`. `volume` es opcional |
 
+## Verificar un cambio visualmente
+
+```bash
+.venv/Scripts/python -m jupyter lab notebooks/01_verificacion_visual.ipynb
+```
+
+Una sección por elemento: calcula, imprime la tabla cruda y la dibuja sobre las velas.
+Cada gráfico lleva un comentario *Cómo verificar* con qué mirar exactamente, y varias
+secciones traen `assert` que comprueban la definición sin depender del ojo (divergencias,
+desfase de fractales, alternancia de swings). La última celda barre 6 símbolos a la vez.
+
+`notebooks/plot_smc.py` es el helper de dibujo — matplotlib sobre eje **posicional**
+(entero, no fechas), lo que elimina huecos de velas faltantes y hace que anclar cajas sea
+aritmética directa. Está fuera del paquete a propósito: la librería no dibuja.
+
 ## El gotcha nº1: pivots de confirmación vs. origen
 
 `find_pivots` (`_core/pivots.py`) devuelve Series *sparse*: NaN salvo en la vela de
@@ -71,6 +86,14 @@ positions = pivot_high.notna().to_numpy().nonzero()[0] - length
 
 Este desfase ya causó un bug real y es la fuente más probable de look-ahead bias en
 cualquier código nuevo que consuma pivots. Está documentado en `docs/plans/bugs.md`.
+
+## El gotcha nº2: el pivote es asimétrico
+
+`compute_leg` porta `leg()` de LuxAlgo: un swing high solo exige ser mayor que las `length`
+velas **posteriores** — nada sobre las anteriores. **No es `ta.pivothigh`**, que es
+simétrico. Además los swings alternan high/low estrictamente (solo se emite pivote cuando
+la pierna cambia de sentido). Una diferencia contra TradingView casi siempre es esto y no
+un bug; ver `docs/plans/bugs.md` y las celdas de comprobación del notebook §1.
 
 ## Superficie pública
 
@@ -117,7 +140,9 @@ otro repo en el `PYTHONPATH`.
 
 - `tests/builders.py` (167 líneas de fixtures OHLC documentados y verificados) no lo
   importa ningún test todavía. Es infraestructura lista para usar, no código muerto.
-- `notebooks/` se borró entero: los 6 notebooks importaban `app.brokers` /
-  `app.tradingview` / `config.settings` del repo nexora y no arrancaban aquí. Falta
-  rehacer uno de demo contra la librería instalada + `test_data/`.
 - `README.md` no documenta aún parámetros método por método.
+- El notebook se versiona **sin outputs** (34 KB en vez de 1,7 MB). Si lo ejecutas, limpia
+  las salidas antes de commitear.
+- `draw_boxes` extiende las cajas hasta el borde derecho porque la librería no devuelve
+  vela de cierre para order blocks (solo el flag `mitigated`). Si algún día se añade una
+  columna de fin, el helper debería usarla.

@@ -32,6 +32,55 @@ se convirtió en la raíz del repo. Consecuencias que dejó ese corte, todas res
   repo. Esa carpeta se renombró a `test_data/` al extraer la librería. Ahora los
   tests viven en `tests/`, así que `dirname(dirname(__file__))` sí da la raíz.
 
+## El pivote es ASIMÉTRICO — no confundir con `ta.pivothigh` (NO es un bug)
+
+Al construir el notebook de verificación visual escribí un assert "obvio" — el high de un
+swing high debe ser el máximo de su ventana ±length — y **falló en 3 de 10 swings**. El
+assert estaba mal, no la librería.
+
+`compute_leg` (`_core/pivots.py`) porta la función `leg()` de LuxAlgo, cuya condición es:
+
+```python
+new_leg_high = high.shift(length) > high.rolling(length).max()
+#              high[i-length]     >  max(high[i-length+1 .. i])
+```
+
+**Solo mira las `length` velas POSTERIORES al pivote.** No exige nada de las anteriores, a
+diferencia de `ta.pivothigh` de Pine, que es simétrico. Un swing high puede tener velas más
+altas a su izquierda y seguir siendo válido.
+
+Segundo efecto del mismo algoritmo: `find_pivots` solo emite un pivote cuando la pierna
+**cambia** de sentido (`leg != leg.shift(1)`), así que los swings **alternan** high/low
+estrictamente — nunca salen dos highs seguidos.
+
+Medido sobre BTCUSDT 1d, 260 velas, `length=10`: 10 swing highs y 10 swing lows, **0**
+incumplen la definición asimétrica real, **3 de cada lado** incumplen la simétrica. Ambas
+comprobaciones quedaron como celdas con `assert` en
+`notebooks/01_verificacion_visual.ipynb` §1.
+
+**Antes de reportar una diferencia contra TradingView como bug, comprobar si es esto.**
+
+## Verificación visual: qué se comprobó y qué salió (sesión de limpieza)
+
+`notebooks/01_verificacion_visual.ipynb` + `notebooks/plot_smc.py` (helper de ploteo con
+matplotlib, deliberadamente FUERA del paquete — la librería no dibuja). Resultados sobre
+BTCUSDT 1d / 260 velas:
+
+- **Divergencias**: las 4 combinaciones (`regular`/`hidden` × `bullish`/`bearish`) imponen
+  el signo de las dos pendientes. Comprobado numéricamente: 3/3 coherentes. Es un test
+  automático, no depende del ojo.
+- **Fractal**: `confirm_time - origen` == exactamente `length` para los 28 fractales, o sea
+  sin look-ahead bias.
+- **Bollinger**: `middle` == `SMA(20)` exacta (`np.allclose`). Ojo: el % de cierres dentro
+  de las bandas da ~81%, **no** el 95% teórico — eso es normal y NO es un fallo (el 95%
+  asume retornos normales; una serie de precios real es tendencial y de colas pesadas).
+- **Barrido multi-símbolo** (BTC/ETH/SOL/DOGE/PEPE/XRP): los detectores dan conteos
+  comparables en los 6, con precios de $60.112 a $0,0000067 — **7 órdenes de magnitud** sin
+  degradarse. Descarta supuestos de escala de precio hardcodeados.
+- `ipda_fractal` devuelve 0 filas con `length=10` en 260 velas — necesita una secuencia
+  completa de pivotes alternados; no es un fallo, pero conviene tenerlo presente al probar.
+- `print(mode)` de debug encontrado y eliminado en `smc/accessor.py::ipda_fractal`.
+
 ## Los 3 tests que comparan contra `app.tradingview` no son deuda técnica
 
 `test_order_blocks_match_reference_smc_indicator`,
