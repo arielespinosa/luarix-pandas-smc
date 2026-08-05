@@ -1,0 +1,10 @@
+# Entorno de desarrollo: runtime + tests + notebooks de exploración.
+#   .venv/Scripts/python -m pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Tests
+pytest>=8.0
+
+# Notebooks y ploteo (no son dependencias de la librería, solo de la exploración)
+jupyterlab>=4.0
+matplotlib>=3.9

@@ -1,0 +1,6 @@
+# Dependencias de ejecución de la librería (lo que necesita `import pandas_luarix`).
+# Espejo de [project].dependencies en pyproject.toml — instalar con:
+#   .venv/Scripts/python -m pip install -r requirements.txt
+pandas>=3.0
+numpy>=2.4
+pandas_ta_classic>=0.5.44

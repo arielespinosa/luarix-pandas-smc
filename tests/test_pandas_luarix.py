@@ -46,7 +46,7 @@ def synthetic_ohlc() -> pd.DataFrame:
 @pytest.fixture(scope="session")
 def btc_daily_df() -> pd.DataFrame:
     repo_root = os.path.dirname(os.path.dirname(__file__))
-    path = os.path.join(repo_root, "backtests_data", "BTCUSDT", "1d.csv")
+    path = os.path.join(repo_root, "test_data", "BTCUSDT", "1d.csv")
     df = pd.read_csv(path)
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index("date").drop(columns=["close_time"])
@@ -458,6 +458,9 @@ def test_order_blocks_match_reference_smc_indicator(btc_daily_df):
     oráculo de comparación, una vez, con los defaults alineados
     (swing_length=50, atr_period=200, high_vol_multiplier=2.0, ATR,
     High/Low, sin confluence_filter)."""
+    # Oráculo externo: vive en el repo `nexora-trading-framework` (`app/tradingview/`),
+    # no es dependencia de esta librería. Si no está en el path, el test se salta.
+    pytest.importorskip("app.tradingview.smc_indicator")
     from app.tradingview.smc_indicator import SMCIndicator
     from app.tradingview.types import SMCConfig
 
@@ -595,6 +598,9 @@ def test_fair_value_gaps_matches_reference_smc_indicator(btc_daily_df):
     """Mismo criterio de verificación que Equal High/Low y Order Blocks --
     port Python completo del indicador LuxAlgo, usado una vez como oráculo
     de comparación sobre datos reales de BTC diario."""
+    # Oráculo externo: vive en el repo `nexora-trading-framework` (`app/tradingview/`),
+    # no es dependencia de esta librería. Si no está en el path, el test se salta.
+    pytest.importorskip("app.tradingview.smc_indicator")
     from app.tradingview.smc_indicator import SMCIndicator
     from app.tradingview.types import SMCConfig
 
@@ -760,6 +766,9 @@ def test_equal_high_low_matches_reference_smc_indicator(btc_daily_df):
     `pandas_luarix` stays independent of `app/tradingview` in production
     code — this test only imports it as a one-time comparison oracle.
     """
+    # Oráculo externo: vive en el repo `nexora-trading-framework` (`app/tradingview/`),
+    # no es dependencia de esta librería. Si no está en el path, el test se salta.
+    pytest.importorskip("app.tradingview.smc_indicator")
     from app.tradingview.smc_indicator import SMCIndicator
     from app.tradingview.types import SMCConfig
 

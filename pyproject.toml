@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pandas-luarix"
 version = "0.1.0"
 description = "pandas DataFrame accessors (.smc, .indicators, .analysis) for Smart Money Concepts and indicator analysis."
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pandas>=3.0",
@@ -13,6 +14,16 @@ dependencies = [
     "pandas_ta_classic>=0.5.44",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "jupyterlab>=4.0",
+    "matplotlib>=3.9",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["pandas_luarix*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

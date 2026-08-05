@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from _core.fractals import detect_ipda_expansions
+from pandas_luarix._core.fractals import detect_ipda_expansions
 
 
 def _pivots(points, length, n_bars, base_close):
