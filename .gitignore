@@ -1,0 +1,20 @@
+# Entorno virtual
+.venv/
+venv/
+
+# Artefactos de Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Pytest / herramientas
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Editor / SO
+.vscode/
+.idea/
+Thumbs.db
