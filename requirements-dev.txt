@@ -8,3 +8,8 @@ pytest>=8.0
 # Notebooks y ploteo (no son dependencias de la librería, solo de la exploración)
 jupyterlab>=4.0
 matplotlib>=3.9
+
+# Documentación (mkdocs serve / mkdocs build). Espejo del extra [docs].
+mkdocs>=1.6
+mkdocs-material>=9.5
+mkdocstrings-python>=1.10

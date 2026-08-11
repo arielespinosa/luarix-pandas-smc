@@ -45,12 +45,34 @@ df.analysis.divergence(rsi, length=5)
 ```
 
 El DataFrame de entrada debe tener las columnas `open`, `high`, `low`, `close`
-(minúsculas); ver `pandas_luarix/_core/validation.py`.
+(minúsculas) y estar ordenado cronológicamente.
+
+## Documentación
+
+El sitio completo —qué hace cada método, qué requiere, qué parámetros acepta y qué
+columnas devuelve— se construye con MkDocs desde `docs/`:
+
+```bash
+.venv/Scripts/python -m pip install -e ".[docs]"
+.venv/Scripts/python -m mkdocs serve     # http://127.0.0.1:8000
+```
+
+| Página | Qué encontrarás |
+|---|---|
+| [Primeros pasos](docs/guia/primeros-pasos.md) | De un CSV al primer detector |
+| [Contrato de entrada y salida](docs/guia/contratos.md) | Qué se valida, qué devuelve, qué pasa cuando no hay señales |
+| [Conceptos y gotchas](docs/guia/conceptos.md) | Asimetría del pivote, confirmación vs origen, mitigación, ATR |
+| [Índice de métodos](docs/referencia/index.md) | Los 24 métodos públicos en una tabla |
+| [Recetas](docs/recetas.md) | Combinaciones de uso real |
 
 ## Tests
 
 ```bash
 .venv/Scripts/python -m pytest
+# 84 passed, 3 skipped
 ```
 
-Más detalle de arquitectura y convenciones en [AGENT.md](AGENT.md).
+Los 3 que se saltan comparan bit a bit contra un port del indicador LuxAlgo que vive en
+otro repo y se usa como oráculo; llevan `pytest.importorskip`.
+
+Más detalle de arquitectura y convenciones internas en [AGENT.md](AGENT.md).

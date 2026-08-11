@@ -7,6 +7,7 @@ from pandas_luarix._core.enums import (
     ObMitigation,
     VolatilityMethod,
     ZoneOrigin,
+    ZoneSide,
 )
 from pandas_luarix._core.expansion import fib_expansion
 from pandas_luarix._core.fair_value_gaps import detect_fair_value_gaps, mark_filled_fvgs
@@ -130,7 +131,15 @@ class SMCAccessor:
                         frames.append(sweeps)
 
         if not frames:
-            return pd.DataFrame(columns=["swept_level", "swept_level_type", "direction"])
+            # Mismo contrato de vacío que el resto de los detectores: filas
+            # del df (cero) MÁS las columnas nuevas. Antes devolvía un df de
+            # 3 columnas sueltas sin OHLC, así que el código del llamador que
+            # leía `sweeps["close"]` solo se rompía cuando no había sweeps.
+            empty = df.iloc[0:0].copy()
+            empty["swept_level"] = pd.Series(dtype=float)
+            empty["swept_level_type"] = pd.Series(dtype=object)
+            empty["direction"] = pd.Series(dtype=int)
+            return empty
 
         combined = pd.concat(frames).sort_index()
         result = df.loc[combined.index].copy()
@@ -150,7 +159,8 @@ class SMCAccessor:
         Classic 3-candle gap. `min_gap_atr_multiple` (default 0.0, i.e. no
         size filter) discards gaps smaller than `min_gap_atr_multiple * ATR(atr_period)`.
         If `as_records=True` returns a list of dicts with keys: top, bottom,
-        direction, left_index, right_index, filled, left_time.
+        direction, left_index, right_index, filled, left_time, right_time
+        (`left_*` = first candle of the 3, `right_*` = confirming candle).
         """
         check_non_negative_float("min_gap_atr_multiple", min_gap_atr_multiple)
         check_positive_int("atr_period", atr_period)
@@ -179,14 +189,22 @@ class SMCAccessor:
             records = []
             for _, row in fvgs.iterrows():
                 pos = int(date_index.get_indexer([row.name])[0])
+                # El gap ocupa las 3 velas [pos-2, pos]: `left_*` es la
+                # PRIMERA (la que deja el borde opuesto del hueco) y
+                # `right_index` la de confirmación. Antes ambos apuntaban a
+                # `pos`, así que una caja dibujada con `left_index` arrancaba
+                # 2 velas tarde -- el dato estaba mal etiquetado, no era una
+                # convención distinta.
+                left_pos = max(pos - 2, 0)
                 records.append({
                     "top": row["top"],
                     "bottom": row["bottom"],
                     "direction": int(row["direction"]),
-                    "left_index": pos,
+                    "left_index": left_pos,
                     "right_index": pos,
                     "filled": bool(row["filled"]),
-                    "left_time": row.name,
+                    "left_time": date_index[left_pos],
+                    "right_time": row.name,
                 })
             return records
 
@@ -596,13 +614,15 @@ class SMCAccessor:
         bullish = self.bullish_order_block(
             length, ob_mitigation, atr_period, high_vol_multiplier, volatility_method, confluence_filter, include_mitigated
         ).copy()
-        if not bullish.empty:
-            bullish["direction"] = 1
         bearish = self.bearish_order_block(
             length, ob_mitigation, atr_period, high_vol_multiplier, volatility_method, confluence_filter, include_mitigated
         ).copy()
-        if not bearish.empty:
-            bearish["direction"] = -1
+        # La columna se asigna aunque el lado esté vacío: si solo se
+        # asignaba en los no-vacíos, el `concat` rellenaba con NaN el lado
+        # que faltaba y `direction` salía float64 en vez de int64 según
+        # hubiera o no order blocks de los dos signos.
+        bullish["direction"] = pd.Series(1, index=bullish.index, dtype=int)
+        bearish["direction"] = pd.Series(-1, index=bearish.index, dtype=int)
 
         if as_records:
             df = self._df
@@ -691,32 +711,42 @@ class SMCAccessor:
         self,
         origin: ZoneOrigin | str = ZoneOrigin.FRACTAL,
         length: int = 5,
-        side: str = "support",
+        side: ZoneSide | str = ZoneSide.SUPPORT,
         offset_pct: float = 0.5,
         include_mitigated: bool = False,
     ) -> pd.DataFrame:
         """Percentage-offset zone band anchored to an origin price level
-        (Fractal today; extensible -- see `_core/zones.py::build_zone`)."""
+        (Fractal today; extensible -- see `_core/zones.py::build_zone`).
+        `offset_pct` is a PERCENTAGE of the anchor price (0.5 == 0.5 %)."""
         return build_zone(
             self._df, origin=origin, length=length, side=side,
             offset_pct=offset_pct, include_mitigated=include_mitigated,
         )
 
     def _attach_point_times(self, result, date_index):
-        """Añade p{i}_time por cada p{i}_pos no-NaN (correction deja p4/p5 = NaT)."""
+        """Añade p{i}_time por cada p{i}_pos no-NaN (correction deja p4/p5 nulo).
+
+        El "hueco" para los puntos ausentes se toma del PROPIO índice del df
+        (`NaT` si es de fechas, `NaN`/`None` si no): fijar `datetime64[ns]` a
+        mano rompía con `TypeError` cualquier df de índice entero o de
+        strings -- el resto de la librería es agnóstica del tipo de índice y
+        este método era la única excepción.
+        """
+        missing = pd.NaT if isinstance(date_index, pd.DatetimeIndex) else None
         for i in range(6):
             pos_col = f"p{i}_pos"
             time_col = f"p{i}_time"
-            times = pd.Series(pd.NaT, index=result.index, dtype="datetime64[ns]")
-            mask = result[pos_col].notna()
+            mask = result[pos_col].notna().to_numpy()
+            values = pd.Series([missing] * len(result), index=result.index, dtype=object)
             if mask.any():
                 pos = result.loc[mask, pos_col].astype(int).to_numpy()
-                times.loc[mask] = date_index[pos]
-            result[time_col] = times
+                values.loc[mask] = pd.Series(list(date_index[pos]), index=result.index[mask])
+            # `infer_objects` recupera datetime64 cuando el índice es de
+            # fechas y todos los puntos existen; deja object si hay huecos.
+            result[time_col] = values.infer_objects()
         return result
- 
- 
-    def ipda_fractal(self, length: int = 50, mode: str = "impulse", direction: int = 0, as_records: bool = False) -> pd.DataFrame:
+
+    def ipda_fractal(self, length: int = 50, mode: str = "impulse", direction: int = 0, as_records: bool = False) -> pd.DataFrame | list[dict]:
         """
         Detecta expansiones fractales estilo IPDA sobre pivotes confirmados.
     

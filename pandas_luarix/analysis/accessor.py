@@ -1,17 +1,22 @@
 import pandas as pd
 
 from pandas_luarix._core.divergence import detect_divergence
-from pandas_luarix._core.validation import check_positive_int, require_min_rows, validate_ohlc_columns
+from pandas_luarix._core.validation import (
+    check_aligned_series,
+    check_positive_int,
+    require_min_rows,
+    validate_ohlc_columns,
+)
 
-_RESULT_COLUMNS = [
-    "divergence_type",
-    "direction",
-    "price",
-    "prior_time",
-    "prior_price",
-    "indicator_value",
-    "prior_indicator_value",
-]
+_RESULT_DTYPES = {
+    "divergence_type": object,
+    "direction": int,
+    "price": float,
+    "prior_time": object,
+    "prior_price": float,
+    "indicator_value": float,
+    "prior_indicator_value": float,
+}
 
 
 @pd.api.extensions.register_dataframe_accessor("analysis")
@@ -33,8 +38,14 @@ class AnalysisAccessor:
         `divergence_type` ("regular_bullish"/"hidden_bullish"/"regular_bearish"/
         "hidden_bearish"), `direction` (1 alcista/-1 bajista), `price`,
         `prior_time`, `prior_price`, `indicator_value`, `prior_indicator_value`.
+
+        `indicator` DEBE compartir el índice del df (mismas etiquetas, mismo
+        orden): los pivotes se buscan sobre las posiciones de la serie y se
+        usan para indexar el df, así que una serie desalineada devolvía filas
+        de las barras equivocadas sin lanzar ningún error.
         """
         check_positive_int("length", length)
+        check_aligned_series("indicator", indicator, self._df)
         require_min_rows(self._df, length * 2 + 1, context=f"divergence(length={length})")
         df = self._df
 
@@ -42,8 +53,8 @@ class AnalysisAccessor:
 
         if events.empty:
             result = df.iloc[0:0].copy()
-            for column in _RESULT_COLUMNS:
-                result[column] = pd.Series(dtype=object)
+            for column, dtype in _RESULT_DTYPES.items():
+                result[column] = pd.Series(dtype=dtype)
             return result
 
         positions = events["position"].to_numpy()

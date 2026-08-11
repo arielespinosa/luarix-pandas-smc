@@ -31,6 +31,17 @@ class ZoneOrigin(str, Enum):
     FRACTAL = "fractal"
 
 
+class ZoneSide(str, Enum):
+    """Hacia qué lado se proyecta la banda de una zona (`build_zone`).
+
+    SUPPORT (demanda) ancla el borde BAJO del origen y extiende hacia abajo;
+    RESISTANCE (oferta) ancla el borde ALTO y extiende hacia arriba.
+    """
+
+    SUPPORT = "support"
+    RESISTANCE = "resistance"
+
+
 IPDA_LABELS = {
     "impulse": ("X", "1", "2", "3", "4", "5"),
     "correction": ("X", "A", "B", "C"),

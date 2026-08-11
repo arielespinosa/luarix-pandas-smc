@@ -9,6 +9,9 @@ __pycache__/
 build/
 dist/
 
+# Documentación generada (MkDocs) -- el fuente es docs/, esto es la salida
+site/
+
 # Pytest / herramientas
 .pytest_cache/
 .ruff_cache/

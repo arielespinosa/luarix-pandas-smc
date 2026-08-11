@@ -35,6 +35,13 @@ class IndicatorsAccessor:
         columna OHLC de entrada (catálogo NodeDefinition "ema" expone
         close/open/high/low)."""
         check_positive_int("length", length)
+        if source not in self._df.columns:
+            # Antes salía un `KeyError` crudo de pandas, el único método de
+            # la librería que no reportaba un parámetro inválido como ValueError.
+            raise ValueError(
+                f"'source' must be an existing column, got {source!r}. "
+                f"Available: {list(self._df.columns)}."
+            )
         require_min_rows(self._df, length, context=f"ema(length={length})")
         df = self._df
         result = df.copy()

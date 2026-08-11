@@ -55,13 +55,14 @@ accessor que corresponda.
 | Validación al entrar | `_core/validation.py` | `validate_ohlc_columns` en cada `__init__` de accessor; `check_positive_int/float`, `require_min_rows` al inicio de cada método público |
 | Categóricos como Enum | `_core/enums.py` | `EqualLevelMethod`, `ObMitigation`, `VolatilityMethod`, `LiquidityLevels`, `ZoneOrigin` — todos `(str, Enum)`. Cada método coacciona con `Enum(value)`, lo que da `ValueError` gratis ante valores inválidos |
 | Nunca borrar, marcar | `order_blocks.py`, `fair_value_gaps.py`, `equal_levels.py` | Los elementos mitigados/rellenados se **retienen** con columna booleana; `include_mitigated` / `include_filled` solo filtran la vista devuelta |
-| Salida = filas del df + columnas | todos los accessors | El resultado siempre es indexable contra el df de entrada. Salida vacía = `df.iloc[0:0]` con las columnas esperadas, nunca `None` ni un df sin columnas |
+| Salida = filas del df + columnas | todos los accessors | El resultado siempre es indexable contra el df de entrada. Salida vacía = `df.iloc[0:0]` con las columnas esperadas, nunca `None` ni un df sin columnas. Fijado por `tests/test_contracts.py::test_empty_results_keep_the_ohlc_columns` |
 | Columnas OHLC en minúscula | `validation.py` | `open`, `high`, `low`, `close`. `volume` es opcional |
+| El índice del df es opaco | todos los accessors | Se trabaja SIEMPRE por posición y se traduce con `df.index[pos]`. No asumir `DatetimeIndex`: un `RangeIndex` es igual de válido (esto ya causó un crash en `ipda_fractal`) |
 
 ## Verificar un cambio visualmente
 
 ```bash
-.venv/Scripts/python -m jupyter lab notebooks/01_verificacion_visual.ipynb
+.venv/Scripts/python -m jupyter lab notebooks/01_pandas_luarix.ipynb
 ```
 
 Una sección por elemento: calcula, imprime la tabla cruda y la dibuja sobre las velas.
@@ -106,7 +107,12 @@ un bug; ver `docs/plans/bugs.md` y las celdas de comprobación del notebook §1.
 - **`df.indicators`** — `bb50`, `ema`, `rsi`, `atr`, `stochastic_oscillator`.
   Delegan en `pandas_ta_classic`, salvo el estocástico que es cálculo propio.
 - **`df.analysis`** — `divergence(indicator: pd.Series, length)`. Es agnóstico del
-  indicador: le pasas cualquier Series alineada al índice (RSI, %K, CVD...).
+  indicador: le pasas cualquier Series alineada al índice (RSI, %K, CVD...). La
+  alineación es obligatoria y se valida (`check_aligned_series`): una serie con otro
+  índice devolvía barras equivocadas en silencio.
+- **Enums** reexportados desde la raíz: `EqualLevelMethod`, `ObMitigation`,
+  `VolatilityMethod`, `LiquidityLevels`, `ZoneOrigin`, `ZoneSide`. Si agregas un
+  categórico nuevo, va al `__all__` de `__init__.py` (hay un test que lo comprueba).
 
 Defaults con historia detrás, no tocar a la ligera: `length=3` en `equal_*` (el
 resto usa `50`), `atr_period=200`.
@@ -117,7 +123,7 @@ resto usa `50`), `atr_period=200`.
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt
 .venv/Scripts/python -m pip install -e .
-.venv/Scripts/python -m pytest          # 48 pasan, 3 se saltan
+.venv/Scripts/python -m pytest          # 84 pasan, 3 se saltan
 ```
 
 Python 3.13 · pandas 3.0 · numpy 2.5 · pandas_ta_classic 0.6.
@@ -136,11 +142,22 @@ Van con `pytest.importorskip`, así que aquí se saltan y allí corren. No son d
 técnica: si tocas ATR, order blocks o equal levels, vale la pena correrlos con el
 otro repo en el `PYTHONPATH`.
 
+## Documentación
+
+El sitio de referencia (MkDocs Material) vive en `docs/` y se construye con:
+
+```bash
+.venv/Scripts/python -m mkdocs serve   # http://127.0.0.1:8000
+.venv/Scripts/python -m mkdocs build   # HTML estático en site/
+```
+
+`docs/reference/` documenta método por método: qué hace, qué requiere, qué parámetros
+acepta y qué columnas devuelve. `docs/plans/` (planes y `bugs.md`) queda excluido del
+sitio vía `exclude_docs` en `mkdocs.yml` — sigue siendo documentación interna.
+Si agregas o cambias un método público, actualiza su página en `docs/reference/`.
+
 ## Deuda conocida
 
-- `tests/builders.py` (167 líneas de fixtures OHLC documentados y verificados) no lo
-  importa ningún test todavía. Es infraestructura lista para usar, no código muerto.
-- `README.md` no documenta aún parámetros método por método.
 - El notebook se versiona **sin outputs** (34 KB en vez de 1,7 MB). Si lo ejecutas, limpia
   las salidas antes de commitear.
 - `draw_boxes` extiende las cajas hasta el borde derecho porque la librería no devuelve

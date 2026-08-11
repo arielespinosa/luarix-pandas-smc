@@ -1,7 +1,16 @@
-from pandas_luarix._core.enums import EqualLevelMethod, LiquidityLevels, ObMitigation, VolatilityMethod
+from pandas_luarix._core.enums import (
+    EqualLevelMethod,
+    LiquidityLevels,
+    ObMitigation,
+    VolatilityMethod,
+    ZoneOrigin,
+    ZoneSide,
+)
 from pandas_luarix.smc.accessor import SMCAccessor  # noqa: F401  (import registers the accessor)
 from pandas_luarix.indicators.accessor import IndicatorsAccessor  # noqa: F401  (import registers the accessor)
 from pandas_luarix.analysis.accessor import AnalysisAccessor  # noqa: F401  (import registers the accessor)
+
+__version__ = "0.1.0"
 
 __all__ = [
     "SMCAccessor",
@@ -11,4 +20,7 @@ __all__ = [
     "ObMitigation",
     "VolatilityMethod",
     "LiquidityLevels",
+    "ZoneOrigin",
+    "ZoneSide",
+    "__version__",
 ]
