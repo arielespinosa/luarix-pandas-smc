@@ -1,0 +1,109 @@
+site_name: pandas-luarix
+site_description: >-
+  Accessors de pandas.DataFrame para Smart Money Concepts, indicadores técnicos
+  y análisis de divergencias.
+site_author: Luarix
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+
+# `docs/plans/` es documentación INTERNA (planes de trabajo y bugs.md, el
+# registro de hallazgos que se lee antes de tocar código). No forma parte del
+# sitio publicado, pero se sigue versionando en el repo.
+exclude_docs: |
+  plans/
+
+theme:
+  name: material
+  language: es
+  icon:
+    logo: material/chart-timeline-variant
+    repo: fontawesome/brands/git-alt
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Cambiar a modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Cambiar a modo claro
+
+plugins:
+  - search:
+      lang: es
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            heading_level: 3
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            filters: ["!^_[^_]"]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Inicio: index.md
+  - Guía:
+      - Instalación: guia/instalacion.md
+      - Primeros pasos: guia/primeros-pasos.md
+      - Contrato de entrada y salida: guia/contratos.md
+      - Conceptos y gotchas: guia/conceptos.md
+  - Referencia:
+      - Índice de métodos: referencia/index.md
+      - Estructura de mercado: referencia/estructura.md
+      - Zonas (OB, FVG, demanda): referencia/zonas.md
+      - Liquidez: referencia/liquidez.md
+      - Régimen de volatilidad: referencia/volatilidad.md
+      - Proyecciones (Fib, IPDA): referencia/proyecciones.md
+      - Indicadores clásicos: referencia/indicadores.md
+      - Análisis (divergencias): referencia/analisis.md
+      - Enums y parámetros: referencia/enums.md
+  - Recetas: recetas.md
+  - API interna (_core): api-interna.md

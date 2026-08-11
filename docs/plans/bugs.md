@@ -56,13 +56,13 @@ estrictamente — nunca salen dos highs seguidos.
 Medido sobre BTCUSDT 1d, 260 velas, `length=10`: 10 swing highs y 10 swing lows, **0**
 incumplen la definición asimétrica real, **3 de cada lado** incumplen la simétrica. Ambas
 comprobaciones quedaron como celdas con `assert` en
-`notebooks/01_verificacion_visual.ipynb` §1.
+`notebooks/01_pandas_luarix.ipynb` §1.
 
 **Antes de reportar una diferencia contra TradingView como bug, comprobar si es esto.**
 
 ## Verificación visual: qué se comprobó y qué salió (sesión de limpieza)
 
-`notebooks/01_verificacion_visual.ipynb` + `notebooks/plot_smc.py` (helper de ploteo con
+`notebooks/01_pandas_luarix.ipynb` + `notebooks/plot_smc.py` (helper de ploteo con
 matplotlib, deliberadamente FUERA del paquete — la librería no dibuja). Resultados sobre
 BTCUSDT 1d / 260 velas:
 
@@ -94,6 +94,87 @@ el otro corren. **No borrarlos**: son la única defensa contra el tipo de bug de
 punto 9 de la sección siguiente (ATR con arranque SMA-seed vs EMA-cold-start, que
 divergía ~10% durante cientos de barras sin lanzar ningún error). Si tocas ATR,
 order blocks o equal levels, córrelos con el otro repo en el `PYTHONPATH`.
+
+---
+
+## Revisión de cierre (paso a producción) — 10 bugs vivos encontrados y arreglados
+
+Barrido completo de la superficie pública antes de dar el proyecto por cerrado. Los 48
+tests existentes pasaban con TODOS estos bugs presentes: ninguno se manifestaba en el
+camino feliz (df con índice de fechas, parámetros literales de Python, resultado no
+vacío). Regresiones en `tests/test_contracts.py`; suite ahora en **84 pasan, 3 skip**.
+
+| # | Qué pasaba | Severidad |
+|---|---|---|
+| 1 | `ipda_fractal` reventaba con `TypeError` en cualquier df de índice NO temporal | crash |
+| 2 | `analysis.divergence` con un indicador desalineado devolvía las barras equivocadas | silencioso |
+| 3 | `demand_zone(side=...)` aceptaba cualquier string; todo lo != `"support"` daba resistencia | silencioso |
+| 4 | `liquidity_sweep` vacío perdía las columnas OHLC | contrato |
+| 5 | En los records de FVG, `left_index`/`left_time` apuntaban a la vela de confirmación | dato mal etiquetado |
+| 6 | `check_positive_int` rechazaba enteros de numpy (`np.int64`) | fricción de API |
+| 7 | `ZoneOrigin` no estaba exportado desde `pandas_luarix` | fricción de API |
+| 8 | `indicators.ema(source=...)` lanzaba `KeyError` crudo en vez de `ValueError` | fricción de API |
+| 9 | El resultado vacío de `divergence` declaraba todas las columnas `object` | cosmético |
+| 10 | `demand_zone(offset_pct=<0)` producía una banda invertida (`bottom > top`) | silencioso |
+
+Detalle de los que dejan lección, no solo parche:
+
+1. **`ipda_fractal` en índice no temporal.** `_attach_point_times` construía la columna
+   de tiempos como `pd.Series(pd.NaT, dtype="datetime64[ns]")` y luego le asignaba
+   `date_index[pos]`. Con un `RangeIndex` eso es asignar enteros a un bloque
+   datetime64 → `TypeError`. Era la ÚNICA parte de la librería que asumía índice de
+   fechas; todo el resto trabaja con posiciones y `date_index[...]` genérico. Fix: el
+   hueco sale del propio índice (`NaT` si es `DatetimeIndex`, `None` si no) y se cierra
+   con `infer_objects()`. **Lección**: los `dtype=` literales en construcción de
+   columnas derivadas del índice son un supuesto sobre el índice del usuario.
+
+2. **`divergence` con indicador desalineado — corrupción silenciosa.** El detector
+   busca pivotes sobre las posiciones de la SERIE del indicador y usa esas posiciones
+   para indexar el DF. Si la serie es más corta o tiene otro índice, el resultado son
+   filas reales del df pero de barras que no corresponden: no hay `IndexError` porque
+   las posiciones son válidas, solo están mal. Medido: un RSI recortado a 50 valores
+   contra un df de 400 filas devolvía 1 evento (en vez de 10) apuntando a una barra
+   arbitraria. Fix: `check_aligned_series` exige mismo largo Y mismo índice.
+   **Lección**: cuando una función mezcla posiciones de dos objetos distintos, la
+   alineación es una precondición que hay que verificar, no asumir.
+
+5. **Geometría de los records de FVG.** Un FVG ocupa 3 velas `[pos-2, pos]`, pero el
+   record ponía `left_index = right_index = pos` y `left_time` = tiempo de confirmación.
+   Cualquiera que dibujara la caja con `left_index` la arrancaba 2 velas tarde. Se
+   corrigió a `left_index = pos - 2` y se agregó `right_time`. **Es un cambio de valor
+   devuelto**: si `nexora-trading-framework` compensaba el desfase a mano al dibujar,
+   hay que quitar esa compensación. `right_index` no cambió (sigue siendo la vela de
+   confirmación, que es contra lo que compara el test del oráculo LuxAlgo).
+
+6. **Enteros de numpy.** `isinstance(np.int64(20), int)` es `False` en Python. Cualquier
+   `length` que viniera de `.astype(int)`, de un índice posicional de numpy o de config
+   deserializada era rechazado como "no es un int positivo" pese a serlo. Fix:
+   `numbers.Integral` / `numbers.Real` (siguen rechazando `bool`, que es `Integral`).
+
+Cosas que se comprobaron y **NO** son bugs (no volver a investigar):
+
+- `_core/zones.py::build_zone` llama a `df.smc.fractal()`, lo que parece romper la regla
+  "`_core` no conoce accessors". No falla nunca: importar `pandas_luarix._core.zones`
+  importa el paquete padre, que registra los accessors. Sigue siendo un olor
+  arquitectónico, no un bug.
+- OHLC con `NaN` sueltos no rompe ningún detector ni cambia los conteos de forma
+  apreciable (las comparaciones con NaN dan False y el evento simplemente no se emite).
+- Índice duplicado o no monótono: `swings`/`fractal` funcionan (indexan por posición).
+  Lo que sí rompe con índice duplicado es `get_indexer([label])`, usado en las ramas
+  `as_records` y en `_levels_table_from_groups`.
+- Serie plana en `stochastic_oscillator`: la división `0/0` da `NaN`, no lanza.
+- `pytest -W error::FutureWarning -W error::DeprecationWarning` pasa limpio con
+  pandas 3.0 / numpy 2.5.
+
+## Deriva de documentación corregida en la misma revisión
+
+`AGENT.md` (y este archivo) referenciaban un `notebooks/01_verificacion_visual.ipynb`
+que ya no existe: el notebook real es `notebooks/01_pandas_luarix.ipynb`.
+`tests/builders.py` figuraba como "infraestructura sin usar": ahora la consume
+`tests/test_contracts.py`, y sus `expected` calculados a mano coinciden EXACTAMENTE con
+la implementación actual — incluido el sweep de `stop_hunt()` que el docstring daba por
+`xfail` "hasta la Fase 3.1" (ese fix ya está: el escaneo arranca en
+`origin_pos + length`, no en `origin_pos + 1`).
 
 ---
 

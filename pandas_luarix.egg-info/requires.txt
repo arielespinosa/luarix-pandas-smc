@@ -1,8 +1,0 @@
-pandas>=3.0
-numpy>=2.4
-pandas_ta_classic>=0.5.44
-
-[dev]
-pytest>=8.0
-jupyterlab>=4.0
-matplotlib>=3.9
