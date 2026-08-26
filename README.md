@@ -65,6 +65,8 @@ columnas devuelve— se construye con MkDocs desde `docs/`:
 | [Índice de métodos](docs/referencia/index.md) | Los 24 métodos públicos en una tabla |
 | [Recetas](docs/recetas.md) | Combinaciones de uso real |
 
+Puedes consultar nuestro notebook de playground [01_pandas_luarix](notebooks/01_pandas_luarix.ipynb). Consulta en el los ejemplos y como reproducirlos con otros activos.
+
 ## Tests
 
 ```bash
